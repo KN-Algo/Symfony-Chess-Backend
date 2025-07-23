@@ -23,3 +23,8 @@ services:
             $broker:   '%env(MQTT_BROKER)%'
             $port:     '%env(int:MQTT_PORT)%'
             $clientId: '%env(MQTT_CLIENT_ID)%'
+
+    App\Service\HealthCheckService:
+        arguments:
+            $mqttBroker: '%env(MQTT_BROKER)%'
+            $mqttPort: '%env(int:MQTT_PORT)%'

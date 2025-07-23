@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }} - Chess System</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+            color: #e0e6ed;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 30px 0;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .header p {
+            font-size: 1.1rem;
+            color: #b8c6db;
+        }
+
+        .overall-status {
+            text-align: center;
+            margin-bottom: 40px;
+            padding: 20px;
+            border-radius: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .overall-status-indicator {
+            font-size: 4rem;
+            margin-bottom: 15px;
+        }
+
+        .overall-status h2 {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+        }
+
+        .services-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+            margin-bottom: 40px;
+        }
+
+        .service-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            padding: 25px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .service-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(90deg, transparent, #4facfe, transparent);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .service-card:hover {
+            transform: translateY(-5px);
+            border-color: rgba(79, 172, 254, 0.3);
+        }
+
+        .service-card:hover::before {
+            opacity: 1;
+        }
+
+        .service-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .service-icon {
+            font-size: 2rem;
+            margin-right: 15px;
+            width: 50px;
+            text-align: center;
+        }
+
+        .service-title {
+            font-size: 1.3rem;
+            font-weight: 600;
+        }
+
+        .service-status {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-weight: 500;
+        }
+
+        .status-healthy {
+            background: rgba(76, 175, 80, 0.2);
+            color: #81c784;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .status-unhealthy {
+            background: rgba(244, 67, 54, 0.2);
+            color: #ef5350;
+            border: 1px solid rgba(244, 67, 54, 0.3);
+        }
+
+        .status-warning {
+            background: rgba(255, 152, 0, 0.2);
+            color: #ffb74d;
+            border: 1px solid rgba(255, 152, 0, 0.3);
+        }
+
+        .status-loading {
+            background: rgba(158, 158, 158, 0.2);
+            color: #bdbdbd;
+            border: 1px solid rgba(158, 158, 158, 0.3);
+        }
+
+        .status-indicator {
+            margin-right: 8px;
+            font-size: 1.1rem;
+        }
+
+        .service-details {
+            color: #b8c6db;
+            font-size: 0.9rem;
+        }
+
+        .service-details div {
+            margin-bottom: 8px;
+        }
+
+        .service-details strong {
+            color: #e0e6ed;
+        }
+
+        .refresh-container {
+            text-align: center;
+            margin-top: 30px;
+            position: relative;
+        }
+
+        .refresh-btn {
+            background: linear-gradient(45deg, #4facfe, #00f2fe);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 10px;
+            position: relative;
+        }
+
+        .refresh-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .refresh-btn:hover:not(:disabled) {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.3);
+        }
+
+        .refresh-btn:active:not(:disabled) {
+            transform: translateY(0);
+        }
+
+        .refresh-btn i {
+            transition: transform 0.3s ease;
+        }
+
+        .refresh-btn:hover:not(:disabled) i {
+            transform: rotate(180deg);
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(79, 172, 254, 0.9);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            pointer-events: none;
+        }
+
+        .loading .loading-overlay {
+            opacity: 1;
+        }
+
+        .last-updated {
+            text-align: center;
+            margin-top: 20px;
+            color: #8692a6;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            opacity: 0.6;
+        }
+
+        .loading .refresh-btn i {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        @media (max-width: 768px) {
+            .services-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .header h1 {
+                font-size: 2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1><i class="fas fa-chess"></i> Chess System Health Dashboard</h1>
+            <p>Monitoring status komponentów systemu szachowego</p>
+        </div>
+
+        <div class="overall-status" id="overallStatus">
+            <div class="overall-status-indicator" id="overallIndicator">
+                <i class="fas fa-circle-notch fa-spin"></i>
+            </div>
+            <h2 id="overallText">Sprawdzanie stanu systemu...</h2>
+            <p id="overallDescription">Łączenie z komponentami...</p>
+        </div>
+
+        <div class="services-grid" id="servicesGrid">
+            <!-- Services will be loaded here -->
+        </div>
+
+        <div class="refresh-container">
+            <button class="refresh-btn" onclick="refreshHealth()" id="refreshBtn">
+                <i class="fas fa-sync-alt"></i>
+                Odśwież Status
+            </button>
+            <div class="loading-overlay" id="loadingOverlay">
+                <i class="fas fa-spinner fa-spin"></i>
+                Sprawdzanie...
+            </div>
+        </div>
+
+        <div class="last-updated" id="lastUpdated">
+            <!-- Last update time will be shown here -->
+        </div>
+    </div>
+
+    <script>
+        let refreshInterval;
+
+        async function loadHealthStatus() {
+            const refreshBtn = document.getElementById('refreshBtn');
+            const container = document.querySelector('.container');
+            
+            try {
+                container.classList.add('loading');
+                refreshBtn.disabled = true;
+
+                const response = await fetch('/api/health');
+                const data = await response.json();
+
+                updateOverallStatus(data.overall_status);
+                updateServices(data);
+                updateLastUpdated(data.timestamp, data.total_time);
+
+            } catch (error) {
+                console.error('Error loading health status:', error);
+                showError('Błąd podczas ładowania statusu systemu');
+            } finally {
+                container.classList.remove('loading');
+                refreshBtn.disabled = false;
+            }
+        }
+
+        function updateOverallStatus(status) {
+            const indicator = document.getElementById('overallIndicator');
+            const text = document.getElementById('overallText');
+            const description = document.getElementById('overallDescription');
+
+            switch (status) {
+                case 'healthy':
+                    indicator.innerHTML = '<i class="fas fa-check-circle" style="color: #81c784;"></i>';
+                    text.textContent = 'System działa prawidłowo';
+                    description.textContent = 'Wszystkie komponenty są dostępne';
+                    break;
+                case 'warning':
+                    indicator.innerHTML = '<i class="fas fa-exclamation-triangle" style="color: #ffb74d;"></i>';
+                    text.textContent = 'System działa z ostrzeżeniami';
+                    description.textContent = 'Niektóre komponenty mogą wymagać uwagi';
+                    break;
+                case 'unhealthy':
+                    indicator.innerHTML = '<i class="fas fa-times-circle" style="color: #ef5350;"></i>';
+                    text.textContent = 'System ma problemy';
+                    description.textContent = 'Wymagana interwencja - krytyczne komponenty niedostępne';
+                    break;
+            }
+        }
+
+        function updateServices(data) {
+            const grid = document.getElementById('servicesGrid');
+            grid.innerHTML = '';
+
+            const services = [
+                {
+                    key: 'mqtt',
+                    title: 'MQTT Broker',
+                    icon: 'fas fa-broadcast-tower',
+                    description: 'Komunikacja z urządzeniami IoT'
+                },
+                {
+                    key: 'mercure',
+                    title: 'Mercure Hub',
+                    icon: 'fas fa-satellite-dish',
+                    description: 'WebSocket i komunikacja real-time'
+                },
+                {
+                    key: 'raspberry',
+                    title: 'Raspberry Pi',
+                    icon: 'fab fa-raspberry-pi',
+                    description: 'Kontroler szachownicy fizycznej'
+                },
+                {
+                    key: 'chess_engine',
+                    title: 'Silnik Szachowy',
+                    icon: 'fas fa-brain',
+                    description: 'AI do analizy i sugerowania ruchów'
+                }
+            ];
+
+            services.forEach(service => {
+                const serviceData = data[service.key];
+                const card = createServiceCard(service, serviceData);
+                grid.appendChild(card);
+            });
+        }
+
+        function createServiceCard(service, data) {
+            const card = document.createElement('div');
+            card.className = 'service-card';
+
+            const statusClass = `status-${data.status}`;
+            const statusIcon = getStatusIcon(data.status);
+            const statusText = getStatusText(data.status);
+
+            card.innerHTML = `
+                <div class="service-header">
+                    <div class="service-icon">
+                        <i class="${service.icon}"></i>
+                    </div>
+                    <div class="service-title">${service.title}</div>
+                </div>
+                
+                <div class="service-status ${statusClass}">
+                    <i class="${statusIcon} status-indicator"></i>
+                    <span>${statusText}</span>
+                </div>
+                
+                <div class="service-details">
+                    <div><strong>Endpoint:</strong> ${data.endpoint}</div>
+                    <div><strong>Wiadomość:</strong> ${data.message}</div>
+                    ${data.response_time ? `<div><strong>Czas odpowiedzi:</strong> ${data.response_time}</div>` : ''}
+                    ${data.status_code ? `<div><strong>Status HTTP:</strong> ${data.status_code}</div>` : ''}
+                    ${data.note ? `<div><strong>Uwaga:</strong> ${data.note}</div>` : ''}
+                    <div><strong>Opis:</strong> ${service.description}</div>
+                </div>
+            `;
+
+            return card;
+        }
+
+        function getStatusIcon(status) {
+            switch (status) {
+                case 'healthy': return 'fas fa-check-circle';
+                case 'warning': return 'fas fa-exclamation-triangle';
+                case 'unhealthy': return 'fas fa-times-circle';
+                default: return 'fas fa-question-circle';
+            }
+        }
+
+        function getStatusText(status) {
+            switch (status) {
+                case 'healthy': return 'Działa prawidłowo';
+                case 'warning': return 'Ostrzeżenie';
+                case 'unhealthy': return 'Niedostępny';
+                default: return 'Nieznany';
+            }
+        }
+
+        function updateLastUpdated(timestamp, totalTime) {
+            const lastUpdated = document.getElementById('lastUpdated');
+            const date = new Date(timestamp);
+            const timeInfo = totalTime ? ` (czas ładowania: ${totalTime})` : '';
+            lastUpdated.textContent = `Ostatnia aktualizacja: ${date.toLocaleString('pl-PL')}${timeInfo}`;
+        }
+
+        function refreshHealth() {
+            loadHealthStatus();
+        }
+
+        function showError(message) {
+            const grid = document.getElementById('servicesGrid');
+            grid.innerHTML = `
+                <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #ef5350;">
+                    <i class="fas fa-exclamation-triangle" style="font-size: 3rem; margin-bottom: 20px;"></i>
+                    <h3>${message}</h3>
+                    <p>Sprawdź połączenie sieciowe i spróbuj ponownie.</p>
+                </div>
+            `;
+        }
+
+        // Auto-refresh every 60 seconds
+        function startAutoRefresh() {
+            refreshInterval = setInterval(loadHealthStatus, 60000);
+        }
+
+        function stopAutoRefresh() {
+            if (refreshInterval) {
+                clearInterval(refreshInterval);
+            }
+        }
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            loadHealthStatus();
+            startAutoRefresh();
+        });
+
+        // Stop auto-refresh when page becomes hidden
+        document.addEventListener('visibilitychange', function() {
+            if (document.hidden) {
+                stopAutoRefresh();
+            } else {
+                startAutoRefresh();
+            }
+        });
+    </script>
+</body>
+</html>
