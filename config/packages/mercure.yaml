@@ -1,0 +1,10 @@
+mercure:
+    hubs:
+        default:
+            # Adres Twojego Mercure hubu, bierze wartość z .env
+            url: '%env(MERCURE_URL)%'
+            # Sekret JWT do podpisywania tokenów (z .env)
+            jwt:
+                secret: '%env(MERCURE_JWT_SECRET)%'
+                publish: "*"
+                subscribe: "*"
