@@ -7,17 +7,49 @@ use Symfony\Component\HttpClient\HttpClient;
 use Symfony\Contracts\HttpClient\HttpClientInterface;
 use Psr\Log\LoggerInterface;
 
+/**
+ * Serwis sprawdzania stanu zdrowia komponentów systemu szachowego.
+ * 
+ * HealthCheckService monitoruje dostępność i responsywność wszystkich kluczowych
+ * komponentów systemu szachowego, zapewniając kompleksowy obraz stanu całego systemu.
+ * 
+ * Monitorowane komponenty:
+ * - MQTT Broker: komunikacja między komponentami
+ * - Mercure Hub: WebSocket dla aplikacji webowej
+ * - Raspberry Pi: kontroler fizycznej szachownicy (placeholder)
+ * - Chess Engine: silnik szachowy AI (placeholder)
+ * 
+ * Serwis optymalizuje wydajność poprzez:
+ * - Asynchroniczne sprawdzenia HTTP
+ * - Krótkie, konfigurowalne timeouty
+ * - Równoległe testowanie wszystkich komponentów
+ * 
+ * @author Adrian Goral <adrian@example.com>
+ * @since 1.0.0
+ */
 class HealthCheckService
 {
-    private const TIMEOUT = 2; // timeout w sekundach - zmniejszony dla szybszych odpowiedzi
+    /** @var int Timeout dla żądań HTTP w sekundach */
+    private const TIMEOUT = 2; // timeout w sekundach - zmniejszony dla szybszej odpowiedzi
+    
+    /** @var int Timeout dla połączeń MQTT w sekundach */
     private const MQTT_TIMEOUT = 3; // krótszy timeout dla MQTT
 
+    /**
+     * @param string $mqttBroker Adres brokera MQTT
+     * @param int $mqttPort Port brokera MQTT
+     * @param string $mercureUrl URL hubu Mercure
+     * @param string $raspberryUrl URL endpointu Raspberry Pi (obecnie placeholder)
+     * @param string $chessEngineUrl URL endpointu silnika szachowego (obecnie placeholder)
+     * @param LoggerInterface|null $logger Logger do zapisywania błędów (opcjonalny)
+     * @param HttpClientInterface|null $httpClient Klient HTTP (zostanie utworzony jeśli null)
+     */
     public function __construct(
         private string $mqttBroker,
         private int $mqttPort,
         private string $mercureUrl = 'http://127.0.0.1:3000',
-        private string $raspberryUrl = 'http://192.168.1.100:8080', // placeholder
-        private string $chessEngineUrl = 'http://192.168.1.101:5000', // placeholder
+        private string $raspberryUrl = 'http://192.168.1.100:8080', // zastępczy URL
+        private string $chessEngineUrl = 'http://192.168.1.101:5000', // zastępczy URL
         private ?LoggerInterface $logger = null,
         private ?HttpClientInterface $httpClient = null
     ) {
@@ -27,6 +59,23 @@ class HealthCheckService
         ]);
     }
 
+    /**
+     * Przeprowadza kompleksowe sprawdzenie stanu zdrowia systemu.
+     * 
+     * Metoda asynchronicznie testuje wszystkie komponenty systemu i zwraca
+     * szczegółowy raport o ich dostępności i wydajności. Optymalizuje czas
+     * wykonania poprzez równoległe sprawdzenia HTTP i szybkie testy MQTT.
+     * 
+     * @return array{
+     *   mqtt: array,
+     *   mercure: array,
+     *   raspberry: array,
+     *   chess_engine: array,
+     *   overall_status: string,
+     *   timestamp: string,
+     *   total_time: string
+     * } Kompletny raport stanu zdrowia systemu
+     */
     public function getSystemHealth(): array
     {
         $startTime = microtime(true);
@@ -34,10 +83,10 @@ class HealthCheckService
         // Rozpocznij wszystkie sprawdzenia HTTP asynchronicznie
         $responses = [];
         
-        // MQTT sprawdzamy synchronicznie (szybkie)
+        // MQTT sprawdzamy synchronicznie (szybki test)
         $mqttResult = $this->checkMqttConnection();
         
-        // HTTP requests asynchronicznie
+        // Żądania HTTP asynchronicznie
         try {
             $responses['mercure'] = $this->httpClient->request('GET', $this->mercureUrl, [
                 'timeout' => self::TIMEOUT
@@ -227,7 +276,7 @@ class HealthCheckService
             }
         }
         
-        // Sprawdź czy są jakieś ostrzeżenia
+        // Sprawdź czy są jakiekolwiek ostrzeżenia
         $allServices = [$mqttStatus, $mercureStatus, $raspberryStatus, $chessEngineStatus];
         foreach ($allServices as $status) {
             if ($status['status'] === 'warning') {
@@ -244,7 +293,7 @@ class HealthCheckService
             $startTime = microtime(true);
             $clientId = 'health_check_' . uniqid();
             
-            // Ustawienia z krótszym timeoutem
+            // Ustawienia z krótszym limitem czasu
             $settings = (new ConnectionSettings())
                 ->setKeepAliveInterval(10)
                 ->setConnectTimeout(self::MQTT_TIMEOUT)
