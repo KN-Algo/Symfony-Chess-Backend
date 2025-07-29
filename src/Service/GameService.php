@@ -31,77 +31,57 @@ class GameService
     /**
      * Przetwarza ruch gracza (fizyczny lub z aplikacji webowej).
      * 
-     * Metoda obsługuje ruchy pochodzące zarówno z fizycznej szachownicy (Raspberry Pi)
-     * jak i z aplikacji webowej. W zależności od źródła ruchu, odpowiednio zarządza
-     * komunikacją z Raspberry Pi i silnikiem szachowym.
-     * 
-     * Przepływ dla ruchu fizycznego:
-     * 1. Aktualizuje stan gry
-     * 2. Wysyła ruch do silnika AI
-     * 3. Publikuje stan na MQTT
-     * 4. Powiadamia UI przez WebSocket
-     * 
-     * Przepływ dla ruchu z UI:
-     * 1. Aktualizuje stan gry
-     * 2. Wysyła polecenie wykonania fizycznego ruchu do Raspberry Pi
-     * 3. Wysyła ruch do silnika AI
-     * 4. Publikuje stan na MQTT
-     * 5. Powiadamia UI przez WebSocket
+     * Metoda dodaje ruch jako oczekujący i wysyła go do silnika szachowego w celu
+     * walidacji. Stan planszy zostanie zaktualizowany dopiero po otrzymaniu
+     * potwierdzenia lub odrzucenia od silnika.
      * 
      * @param string $from Pole źródłowe w notacji szachowej (np. "e2")
      * @param string $to Pole docelowe w notacji szachowej (np. "e4")
      * @param bool $physical Czy ruch został wykonany fizycznie na planszy (true) czy pochodzi z UI (false)
      * @return void
-     * @throws \Exception W przypadku błędu komunikacji MQTT lub aktualizacji stanu
+     * @throws \Exception W przypadku błędu komunikacji MQTT
      */
     public function playerMove(string $from, string $to, bool $physical): void
     {
-        // 1) Zaktualizuj stan
-        $this->state->applyMove($from, $to);
+        // 1) Dodaj ruch jako oczekujący na potwierdzenie
+        $this->state->addPendingMove($from, $to);
 
-        // 2) Jeśli ruch z UI (nie fizyczny), powiadom RasPi o potrzebie wykonania fizycznego ruchu
-        if (!$physical) {
-            $this->mqtt->publish('move/raspi', compact('from','to'));
-        }
+        // 2) Wyślij do silnika w celu walidacji i otrzymania nowego FEN
+        // UWAGA: RPi otrzyma polecenie ruchu dopiero po potwierdzeniu przez silnik
+        $this->mqtt->publish('move/engine', [
+            'from' => $from,
+            'to' => $to,
+            'current_fen' => $this->state->getState()['fen'],
+            'type' => 'move_validation',
+            'physical' => $physical
+        ]);
 
-        // 3) Wyślij do silnika (zawsze)
-        $this->mqtt->publish('move/engine', compact('from','to'));
-
-        // 4) Publikacja pełnego stanu i logu ruchów
-        $state = $this->state->getState();
-        $this->mqtt->publish('state/update', $state);
-        $this->mqtt->publish('log/update', ['moves' => $state['moves']]);
-
-        // 5) Powiadomienie do Mercure (frontend) - ZAWSZE powiadom UI o ruchu
+        // 3) Powiadomienie do UI o ruchu oczekującym na potwierdzenie
         $this->notifier->broadcast([
-            'type' => 'move_executed',
+            'type' => 'move_pending',
             'move' => compact('from', 'to'),
             'physical' => $physical,
-            'state' => $state
+            'state' => $this->state->getState()
         ]);
     }
 
     /**
      * Przetwarza ruch AI (silnika szachowego).
      * 
-     * Metoda obsługuje ruchy generowane przez silnik szachowy w odpowiedzi na ruch gracza.
-     * Aktualizuje stan gry i zarządza komunikacją z fizyczną szachownicą.
-     * 
-     * Przepływ:
-     * 1. Aktualizuje stan gry z ruchem AI
-     * 2. Wysyła polecenie wykonania fizycznego ruchu do Raspberry Pi
-     * 3. Publikuje zaktualizowany stan na MQTT
-     * 4. Powiadamia UI przez WebSocket o ruchu AI
+     * Metoda obsługuje ruchy generowane przez silnik szachowy. Ponieważ silnik
+     * jest źródłem prawdy, ruch jest od razu potwierdzany i stan aktualizowany.
      * 
      * @param string $from Pole źródłowe ruchu AI w notacji szachowej
      * @param string $to Pole docelowe ruchu AI w notacji szachowej
+     * @param string $newFen Nowy stan planszy po ruchu AI
+     * @param string $nextPlayer Następny gracz po ruchu AI
      * @return void
-     * @throws \Exception W przypadku błędu komunikacji MQTT lub aktualizacji stanu
+     * @throws \Exception W przypadku błędu komunikacji MQTT
      */
-    public function aiMove(string $from, string $to): void
+    public function aiMove(string $from, string $to, string $newFen, string $nextPlayer): void
     {
-        // 1) Zaktualizuj stan
-        $this->state->applyMove($from, $to);
+        // 1) Potwierdź ruch AI w stanie gry
+        $this->state->confirmMove($from, $to, $newFen, $nextPlayer);
 
         // 2) Powiadom RasPi o ruchu AI
         $this->mqtt->publish('move/raspi', compact('from','to'));
@@ -111,11 +91,69 @@ class GameService
         $this->mqtt->publish('state/update', $state);
         $this->mqtt->publish('log/update', ['moves' => $state['moves']]);
 
-        // 4) Powiadomienie do Mercure - informuj UI o ruchu AI
+        // 4) Powiadomienie do UI o ruchu AI
         $this->notifier->broadcast([
             'type' => 'ai_move_executed',
             'move' => compact('from', 'to'),
             'state' => $state
+        ]);
+    }
+
+    /**
+     * Obsługuje potwierdzenie ruchu przez silnik szachowy.
+     * 
+     * @param string $from Pole źródłowe ruchu
+     * @param string $to Pole docelowe ruchu
+     * @param string $newFen Nowy stan planszy po ruchu
+     * @param string $nextPlayer Następny gracz
+     * @param bool $physical Czy ruch był fizyczny
+     * @return void
+     */
+    public function confirmMoveFromEngine(string $from, string $to, string $newFen, string $nextPlayer, bool $physical = false): void
+    {
+        // 1) Potwierdź ruch w stanie gry
+        $this->state->confirmMove($from, $to, $newFen, $nextPlayer);
+
+        // 2) Jeśli ruch z UI (nie fizyczny), teraz można powiadomić RPi o wykonaniu
+        if (!$physical) {
+            $this->mqtt->publish('move/raspi', compact('from','to'));
+        }
+
+        // 3) Publikacja pełnego stanu i logu ruchów
+        $state = $this->state->getState();
+        $this->mqtt->publish('state/update', $state);
+        $this->mqtt->publish('log/update', ['moves' => $state['moves']]);
+
+        // 4) Powiadomienie do UI o potwierdzeniu ruchu
+        $this->notifier->broadcast([
+            'type' => 'move_confirmed',
+            'move' => compact('from', 'to'),
+            'physical' => $physical,
+            'state' => $state
+        ]);
+    }
+
+    /**
+     * Obsługuje odrzucenie ruchu przez silnik szachowy.
+     * 
+     * @param string $from Pole źródłowe ruchu
+     * @param string $to Pole docelowe ruchu
+     * @param string $reason Powód odrzucenia
+     * @param bool $physical Czy ruch był fizyczny
+     * @return void
+     */
+    public function rejectMoveFromEngine(string $from, string $to, string $reason, bool $physical = false): void
+    {
+        // 1) Odrzuć ruch w stanie gry
+        $this->state->rejectMove($from, $to, $reason);
+
+        // 2) Powiadomienie do UI o odrzuceniu ruchu
+        $this->notifier->broadcast([
+            'type' => 'move_rejected',
+            'move' => compact('from', 'to'),
+            'reason' => $reason,
+            'physical' => $physical,
+            'state' => $this->state->getState()
         ]);
     }
 
@@ -125,12 +163,6 @@ class GameService
      * Metoda wykonuje pełny reset gry szachowej, przywracając wszystkie komponenty
      * do stanu początkowego. Koordynuje reset między magazynem stanu, zewnętrznymi
      * komponentami (Raspberry Pi, silnik) i interfejsem użytkownika.
-     * 
-     * Przepływ:
-     * 1. Resetuje wewnętrzny stan gry (pozycje figur, historia ruchów)
-     * 2. Wysyła sygnał restartu do wszystkich komponentów przez MQTT
-     * 3. Publikuje czysty stan gry na MQTT
-     * 4. Powiadamia UI o restarcie przez WebSocket
      * 
      * @return void
      * @throws \Exception W przypadku błędu komunikacji MQTT lub resetowania stanu

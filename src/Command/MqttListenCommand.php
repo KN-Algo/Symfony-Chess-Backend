@@ -18,11 +18,14 @@ use Psr\Log\LoggerInterface;
  * - move/player: ruchy fizyczne z Raspberry Pi
  * - move/web: ruchy z aplikacji webowej
  * - move/ai: ruchy od silnika szachowego
+ * - engine/move/confirmed: potwierdzenia legalnych ruchów od silnika z nowym FEN
+ * - engine/move/rejected: odrzucenia nielegalnych ruchów od silnika z powodem
  * - move/possible_moves/request: żądania możliwych ruchów z aplikacji webowej
  * - engine/possible_moves/response: odpowiedzi z możliwymi ruchami od silnika szachowego
  * - status/raspi: statusy Raspberry Pi (przekazywane do UI)
  * - status/engine: statusy silnika szachowego (przekazywane do UI)
  * - control/restart: sygnały restartu gry
+ * - move/+: debug - wszystkie komunikaty move/* dla diagnostyki
  * 
  * Komenda przetwarza statusy komponentów i przekazuje je do aplikacji webowej przez WebSocket,
  * mapując różne formaty statusów na ustandaryzowane komunikaty dla UI.
@@ -162,14 +165,21 @@ class MqttListenCommand extends Command
                 ]);
 
                 $decoded = json_decode($msg, true);
-                if ($decoded && isset($decoded['from'], $decoded['to'])) {
+                if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['fen'], $decoded['next_player'])) {
                     try {
-                        $this->game->aiMove($decoded['from'], $decoded['to']);
+                        $this->game->aiMove(
+                            $decoded['from'], 
+                            $decoded['to'], 
+                            $decoded['fen'], 
+                            $decoded['next_player']
+                        );
                         $io->text("    ✅ <fg=green>AI move processed:</> {$decoded['from']} → {$decoded['to']}");
                         
                         $this->logger?->info('Game: AI move processed successfully', [
                             'from' => $decoded['from'],
-                            'to' => $decoded['to']
+                            'to' => $decoded['to'],
+                            'fen' => $decoded['fen'],
+                            'next_player' => $decoded['next_player']
                         ]);
                     } catch (\Exception $e) {
                         $io->error("    ❌ Failed to process AI move: " . $e->getMessage());
@@ -180,8 +190,87 @@ class MqttListenCommand extends Command
                         ]);
                     }
                 } else {
-                    $io->warning("    ⚠️  Invalid AI move format");
+                    $io->warning("    ⚠️  Invalid AI move format (expected: from, to, fen, next_player)");
                     $this->logger?->warning('MQTT: Invalid AI move format', ['message' => $msg]);
+                }
+            });
+
+            // Subskrybuj potwierdzenia ruchów od silnika
+            $this->mqtt->subscribe('engine/move/confirmed', function($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] ✅ <fg=green>Move confirmed by engine:</> $msg");
+                
+                $this->logger?->info('MQTT: Move confirmed by engine', [
+                    'topic' => $topic,
+                    'message' => $msg,
+                    'timestamp' => $timestamp
+                ]);
+
+                $decoded = json_decode($msg, true);
+                if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['fen'], $decoded['next_player'])) {
+                    try {
+                        $this->game->confirmMoveFromEngine(
+                            $decoded['from'], 
+                            $decoded['to'], 
+                            $decoded['fen'], 
+                            $decoded['next_player'],
+                            $decoded['physical'] ?? false
+                        );
+                        $io->text("    ✅ <fg=green>Move confirmed:</> {$decoded['from']} → {$decoded['to']}");
+                        
+                        $this->logger?->info('Game: Move confirmed successfully', [
+                            'from' => $decoded['from'],
+                            'to' => $decoded['to'],
+                            'fen' => $decoded['fen']
+                        ]);
+                    } catch (\Exception $e) {
+                        $io->error("    ❌ Failed to confirm move: " . $e->getMessage());
+                        $this->logger?->error('Game: Move confirmation failed', [
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                } else {
+                    $io->warning("    ⚠️  Invalid move confirmation format");
+                    $this->logger?->warning('MQTT: Invalid move confirmation format', ['message' => $msg]);
+                }
+            });
+
+            // Subskrybuj odrzucenia ruchów od silnika
+            $this->mqtt->subscribe('engine/move/rejected', function($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] ❌ <fg=red>Move rejected by engine:</> $msg");
+                
+                $this->logger?->info('MQTT: Move rejected by engine', [
+                    'topic' => $topic,
+                    'message' => $msg,
+                    'timestamp' => $timestamp
+                ]);
+
+                $decoded = json_decode($msg, true);
+                if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['reason'])) {
+                    try {
+                        $this->game->rejectMoveFromEngine(
+                            $decoded['from'], 
+                            $decoded['to'], 
+                            $decoded['reason'],
+                            $decoded['physical'] ?? false
+                        );
+                        $io->text("    ❌ <fg=red>Move rejected:</> {$decoded['from']} → {$decoded['to']} ({$decoded['reason']})");
+                        
+                        $this->logger?->info('Game: Move rejected successfully', [
+                            'from' => $decoded['from'],
+                            'to' => $decoded['to'],
+                            'reason' => $decoded['reason']
+                        ]);
+                    } catch (\Exception $e) {
+                        $io->error("    ❌ Failed to reject move: " . $e->getMessage());
+                        $this->logger?->error('Game: Move rejection failed', [
+                            'error' => $e->getMessage()
+                        ]);
+                    }
+                } else {
+                    $io->warning("    ⚠️  Invalid move rejection format");
+                    $this->logger?->warning('MQTT: Invalid move rejection format', ['message' => $msg]);
                 }
             });
 
@@ -377,7 +466,7 @@ class MqttListenCommand extends Command
             });
 
             $io->success('MQTT subscriptions established');
-            $io->comment('Subscribed to: move/player, move/web, move/ai, status/raspi, status/engine, control/restart, move/possible_moves/request, engine/possible_moves/response, move/+');
+            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, control/restart, move/possible_moves/request, engine/possible_moves/response, move/+');
             $io->comment('Listening for moves and status updates... Press Ctrl+C to stop');
             
             $this->logger?->info('MQTT Listener started successfully');
@@ -485,6 +574,12 @@ class MqttListenCommand extends Command
                     ? 'Raspberry Pi encountered an error'
                     : 'Chess engine encountered an error';
                 $processedStatus['severity'] = 'error';
+                break;
+
+            case 'analyzing':
+                $processedStatus['state'] = 'busy';
+                $processedStatus['message'] = 'Chess engine is analyzing the position';
+                $processedStatus['severity'] = 'info';
                 break;
                 
             default:

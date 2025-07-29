@@ -151,47 +151,95 @@ System dostarcza endpoint `/health` który zwraca status wszystkich komponentów
 | Komponent | Subskrybuje (MQTT topic) | Publikuje (MQTT topic) |
 |-----------|--------------------------|------------------------|
 | **Web App** | • `state/update` – pełny stan gry dla UI<br>• `log/update` – aktualizacja logów ruchów | • `move/web` – ruch wysłany przez UI<br>• `move/possible_moves/request` – żądanie możliwych ruchów |
-| **Silnik szachowy** | • `move/engine` – żądanie analizy ruchu do silnika<br>• `engine/possible_moves/request` – żądanie możliwych ruchów | • `move/ai` – ruch AI (odpowiedź silnika)<br>• `status/engine` – `thinking` / `error` / `ready`<br>• `engine/possible_moves/response` – odpowiedź z możliwymi ruchami |
+| **Silnik szachowy** | • `move/engine` – żądanie analizy ruchu do silnika<br>• `engine/possible_moves/request` – żądanie możliwych ruchów | • `move/ai` – ruch AI (odpowiedź silnika)<br>• `status/engine` – `thinking` / `error` / `ready`<br>• `engine/possible_moves/response` – odpowiedź z możliwymi ruchami<br>• `engine/move/confirmed` – potwierdzenie legalnego ruchu z FEN<br>• `engine/move/rejected` – odrzucenie nielegalnego ruchu |
 | **Raspberry Pi** | • `move/raspi` – polecenie fizycznego ruchu AI<br>• `control/restart` – sygnał resetu gry | • `move/player` – wykryty ruch gracza na fizycznej planszy<br>• `status/raspi` – `ready` / `moving` / `error` |
-| **Backend** | • `move/player` – ruch fizyczny od RPi<br>• `move/web` – ruch z UI<br>• `move/ai` – ruch od silnika<br>• `move/possible_moves/request` – żądanie możliwych ruchów od UI<br>• `engine/possible_moves/response` – odpowiedź od silnika z możliwymi ruchami<br>• `status/raspi` – status RPi<br>• `status/engine` – status silnika<br>• `control/restart` – reset gry | • `move/engine` – żądanie analizy do silnika<br>• `move/raspi` – polecenie do RPi<br>• `engine/possible_moves/request` – żądanie możliwych ruchów do silnika<br>• `state/update` – pełny stan gry dla UI<br>• `log/update` – aktualizacja logów ruchów<br>• `control/restart` – reset gry |
+| **Backend** | • `move/player` – ruch fizyczny od RPi<br>• `move/web` – ruch z UI<br>• `move/ai` – ruch od silnika<br>• `move/possible_moves/request` – żądanie możliwych ruchów od UI<br>• `engine/possible_moves/response` – odpowiedź od silnika z możliwymi ruchami<br>• `engine/move/confirmed` – potwierdzenie ruchu od silnika<br>• `engine/move/rejected` – odrzucenie ruchu od silnika<br>• `status/raspi` – status RPi<br>• `status/engine` – status silnika<br>• `control/restart` – reset gry | • `move/engine` – żądanie analizy do silnika<br>• `move/raspi` – polecenie do RPi<br>• `engine/possible_moves/request` – żądanie możliwych ruchów do silnika<br>• `state/update` – pełny stan gry dla UI<br>• `log/update` – aktualizacja logów ruchów<br>• `control/restart` – reset gry |
 
 ## Przepływ komunikacji:
 
 ### 1. Ruch gracza z Web App:
 ```
-Web App → move/web → Backend → move/engine (do silnika) + move/raspi (do RPi)
-Backend → state/update + log/update (do Web App)
+Web App → move/web → Backend → move/engine (walidacja) → Silnik → 
+engine/move/confirmed → Backend → move/raspi (do RPi) + state/update (do UI)
 ```
 
 ### 2. Ruch fizyczny gracza na planszy:
 ```
-Raspberry Pi → move/player → Backend → move/engine (do silnika)
-Backend → state/update + log/update (do Web App)
+Raspberry Pi → move/player → Backend → move/engine (walidacja) → Silnik → 
+engine/move/confirmed → Backend → state/update + log/update (do Web App)
 ```
 
 ### 3. Odpowiedź AI:
 ```
-Silnik → move/ai → Backend → move/raspi (do RPi)
+Silnik → move/ai {from, to, fen, next_player} → Backend → move/raspi (do RPi)
 Backend → state/update + log/update (do Web App)
 ```
 
-### 4. Reset gry:
+### 4. Walidacja ruchu przez silnik:
+```
+Backend → move/engine (walidacja) → Silnik → 
+engine/move/confirmed|rejected → Backend → move/raspi (tylko jeśli confirmed + z UI) + state/update
+```
+
+### 5. Reset gry:
 ```
 Web App (REST API) → Backend → control/restart → Raspberry Pi + Silnik
 Backend → state/update + log/update (do Web App)
 ```
 
-### 5. Statusy komponentów:
+### 6. Statusy komponentów:
 ```
 Raspberry Pi → status/raspi → Backend → UI (przez Mercure)
 Silnik → status/engine → Backend → UI (przez Mercure)
 ```
 
-### 6. Żądanie możliwych ruchów:
+### 7. Żądanie możliwych ruchów:
 ```
 Web App → POST /possible-moves → Backend → move/possible_moves/request → 
 Backend → engine/possible_moves/request → Silnik → engine/possible_moves/response → 
 Backend → UI (przez Mercure)
+Raspberry Pi → status/raspi → Backend → UI (przez Mercure)
+Silnik → status/engine → Backend → UI (przez Mercure)
+```
+
+### 8. Żądanie możliwych ruchów:
+```
+Web App → POST /possible-moves → Backend → move/possible_moves/request → 
+Backend → engine/possible_moves/request → Silnik → engine/possible_moves/response → 
+Backend → UI (przez Mercure)
+```
+
+## 🎯 Synchronizacja stanu planszy (FEN)
+
+System używa silnika szachowego jako **źródła prawdy** o stanie planszy. FEN jest aktualizowany **tylko** po potwierdzeniu przez silnik, co zapewnia:
+
+-  **Walidację legalności ruchów** - niemożliwe nielegalne ruchy
+-  **Prawidłowy FEN** - zawsze aktualny stan planszy po każdym ruchu
+-  **Obsługę ruchów specjalnych** - roszada, en passant, promocja pionka
+-  **Synchronizację komponentów** - wszystkie części systemu mają identyczny stan
+
+### Przepływ walidacji ruchu:
+
+1. **Gracz wykonuje ruch** → Backend dodaje ruch jako `pending`
+2. **Backend → Silnik** na `move/engine` z żądaniem walidacji (flaga `physical`)
+3. **Silnik waliduje** i odpowiada na `engine/move/confirmed` lub `engine/move/rejected`
+4. **Jeśli confirmed i ruch z UI** → Backend wysyła `move/raspi` do Raspberry Pi
+5. **Backend aktualizuje stan** tylko jeśli ruch został potwierdzony
+6. **WebSocket powiadamia UI** o wyniku (`move_confirmed` lub `move_rejected`)
+
+**Ważne**: Raspberry Pi otrzymuje polecenie ruchu **dopiero po potwierdzeniu przez silnik**, co zapobiega wykonywaniu nielegalnych ruchów.
+
+### Nowe typy powiadomień WebSocket:
+
+```javascript
+// Ruch oczekuje na potwierdzenie
+{"type": "move_pending", "move": {"from": "e2", "to": "e4"}, "state": {...}}
+
+// Ruch potwierdzony z aktualnym FEN
+{"type": "move_confirmed", "move": {"from": "e2", "to": "e4"}, "state": {...}}
+
+// Ruch odrzucony z powodem
+{"type": "move_rejected", "move": {"from": "e2", "to": "e4"}, "reason": "Illegal move"}
 ```
 
 ## Dodatkowe kanały komunikacji:
@@ -242,11 +290,24 @@ Backend → UI (przez Mercure)
 }
 ```
 
+#### `move/engine` (Backend → Silnik szachowy - walidacja)
+```json
+{
+  "from": "e2",
+  "to": "e4",
+  "current_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+  "type": "move_validation",
+  "physical": false
+}
+```
+
 #### `move/ai` (Silnik szachowy → Backend)
 ```json
 {
   "from": "g8",
-  "to": "f6"
+  "to": "f6",
+  "fen": "rnbqkb1r/pppppppp/5n2/8/4P3/8/PPPP1PPP/RNBQKBNR w KQkq - 1 2",
+  "next_player": "white"
 }
 ```
 
@@ -277,6 +338,27 @@ Backend → UI (przez Mercure)
 {
   "position": "e2",
   "moves": ["e3", "e4"]
+}
+```
+
+#### `engine/move/confirmed` (Silnik szachowy → Backend)
+```json
+{
+  "from": "e2",
+  "to": "e4",
+  "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+  "next_player": "black",
+  "physical": false
+}
+```
+
+#### `engine/move/rejected` (Silnik szachowy → Backend)
+```json
+{
+  "from": "e2",
+  "to": "e5",
+  "reason": "Illegal move: pawn cannot move two squares from e2 to e5",
+  "physical": false
 }
 ```
 
@@ -433,15 +515,46 @@ Lub pusty string:
 }
 ```
 
+#### Ruch oczekujący na potwierdzenie
+```json
+{
+  "type": "move_pending",
+  "move": {"from": "e2", "to": "e4"},
+  "physical": false,
+  "state": {"fen": "...", "moves": [...], "pending_moves": [...]}
+}
+```
+
+#### Ruch potwierdzony przez silnik
+```json
+{
+  "type": "move_confirmed",
+  "move": {"from": "e2", "to": "e4"},
+  "physical": false,
+  "state": {"fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1", "moves": [...]}
+}
+```
+
+#### Ruch odrzucony przez silnik
+```json
+{
+  "type": "move_rejected",
+  "move": {"from": "e2", "to": "e5"},
+  "reason": "Illegal move: pawn cannot move two squares from e2 to e5",
+  "physical": false,
+  "state": {"fen": "...", "moves": [...]}
+}
+```
+
 #### Reset gry
 ```json
 {
   "type": "game_reset",
   "state": {
-    "fen": "startpos",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
     "moves": [],
     "turn": "white",
-    "status": "ready"
+    "pending_moves": []
   }
 }
 ```
