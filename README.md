@@ -85,6 +85,7 @@ php bin/console app:mqtt:listen
 
 - `POST /move` - Wykonaj ruch
 - `POST /restart` - Zresetuj grę
+- `POST /possible-moves` - Żądaj możliwych ruchów dla pozycji
 - `GET /state` - Pobierz stan gry
 - `GET /health` - Sprawdź stan systemu
 
@@ -93,6 +94,22 @@ php bin/console app:mqtt:listen
 curl -X POST http://localhost:8000/move \
   -H "Content-Type: application/json" \
   -d '{"from": "e2", "to": "e4"}'
+```
+
+### Przykład żądania możliwych ruchów
+```bash
+curl -X POST http://localhost:8000/possible-moves \
+  -H "Content-Type: application/json" \
+  -d '{"position": "e2"}'
+```
+
+Odpowiedź zostanie przesłana przez WebSocket w formacie:
+```json
+{
+  "type": "possible_moves",
+  "position": "e2",
+  "moves": ["e3", "e4"]
+}
 ```
 
 ### WebSocket Subscription
@@ -133,10 +150,10 @@ System dostarcza endpoint `/health` który zwraca status wszystkich komponentów
 
 | Komponent | Subskrybuje (MQTT topic) | Publikuje (MQTT topic) |
 |-----------|--------------------------|------------------------|
-| **Web App** | • `state/update` – pełny stan gry dla UI<br>• `log/update` – aktualizacja logów ruchów | • `move/web` – ruch wysłany przez UI |
-| **Silnik szachowy** | • `move/engine` – żądanie analizy ruchu do silnika | • `move/ai` – ruch AI (odpowiedź silnika)<br>• `status/engine` – `thinking` / `error` / `ready` |
+| **Web App** | • `state/update` – pełny stan gry dla UI<br>• `log/update` – aktualizacja logów ruchów | • `move/web` – ruch wysłany przez UI<br>• `move/possible_moves/request` – żądanie możliwych ruchów |
+| **Silnik szachowy** | • `move/engine` – żądanie analizy ruchu do silnika<br>• `engine/possible_moves/request` – żądanie możliwych ruchów | • `move/ai` – ruch AI (odpowiedź silnika)<br>• `status/engine` – `thinking` / `error` / `ready`<br>• `engine/possible_moves/response` – odpowiedź z możliwymi ruchami |
 | **Raspberry Pi** | • `move/raspi` – polecenie fizycznego ruchu AI<br>• `control/restart` – sygnał resetu gry | • `move/player` – wykryty ruch gracza na fizycznej planszy<br>• `status/raspi` – `ready` / `moving` / `error` |
-| **Backend** | • `move/player` – ruch fizyczny od RPi<br>• `move/web` – ruch z UI<br>• `move/ai` – ruch od silnika<br>• `status/raspi` – status RPi<br>• `status/engine` – status silnika<br>• `control/restart` – reset gry | • `move/engine` – żądanie analizy do silnika<br>• `move/raspi` – polecenie do RPi<br>• `state/update` – pełny stan gry dla UI<br>• `log/update` – aktualizacja logów ruchów<br>• `control/restart` – reset gry |
+| **Backend** | • `move/player` – ruch fizyczny od RPi<br>• `move/web` – ruch z UI<br>• `move/ai` – ruch od silnika<br>• `move/possible_moves/request` – żądanie możliwych ruchów od UI<br>• `engine/possible_moves/response` – odpowiedź od silnika z możliwymi ruchami<br>• `status/raspi` – status RPi<br>• `status/engine` – status silnika<br>• `control/restart` – reset gry | • `move/engine` – żądanie analizy do silnika<br>• `move/raspi` – polecenie do RPi<br>• `engine/possible_moves/request` – żądanie możliwych ruchów do silnika<br>• `state/update` – pełny stan gry dla UI<br>• `log/update` – aktualizacja logów ruchów<br>• `control/restart` – reset gry |
 
 ## Przepływ komunikacji:
 
@@ -170,10 +187,17 @@ Raspberry Pi → status/raspi → Backend → UI (przez Mercure)
 Silnik → status/engine → Backend → UI (przez Mercure)
 ```
 
+### 6. Żądanie możliwych ruchów:
+```
+Web App → POST /possible-moves → Backend → move/possible_moves/request → 
+Backend → engine/possible_moves/request → Silnik → engine/possible_moves/response → 
+Backend → UI (przez Mercure)
+```
+
 ## Dodatkowe kanały komunikacji:
 
 - **Mercure WebSocket**: Backend → Web App (powiadomienia real-time)
-- **REST API**: Web App → Backend (`/move`, `/restart`, `/state`, `/health`)
+- **REST API**: Web App → Backend (`/move`, `/restart`, `/possible-moves`, `/state`, `/health`)
 - **Debugging**: Backend subskrybuje `move/+` (wszystkie move topiki)
 
 ## Mapowanie statusów dla UI:
@@ -231,6 +255,28 @@ Silnik → status/engine → Backend → UI (przez Mercure)
 {
   "from": "g8",
   "to": "f6"
+}
+```
+
+#### `move/possible_moves/request` (Web App → Backend)
+```json
+{
+  "position": "e2"
+}
+```
+
+#### `engine/possible_moves/request` (Backend → Silnik szachowy)
+```json
+{
+  "position": "e2"
+}
+```
+
+#### `engine/possible_moves/response` (Silnik szachowy → Backend)
+```json
+{
+  "position": "e2",
+  "moves": ["e3", "e4"]
 }
 ```
 
@@ -375,6 +421,15 @@ Lub pusty string:
     }
   },
   "timestamp": "10:30:20"
+}
+```
+
+#### Możliwe ruchy
+```json
+{
+  "type": "possible_moves",
+  "position": "e2",
+  "moves": ["e3", "e4"]
 }
 ```
 

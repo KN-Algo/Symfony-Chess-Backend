@@ -13,9 +13,6 @@ use Symfony\Component\Mercure\Update;
  * 
  * Mercure jest protokołem Server-Sent Events (SSE) zapewniającym real-time communication
  * między serwerem a przeglądarkami bez potrzeby implementacji pełnego WebSocket.
- * 
- * @author Adrian Goral <adrian@example.com>
- * @since 1.0.0
  */
 class NotifierService
 {

@@ -18,6 +18,8 @@ use Psr\Log\LoggerInterface;
  * - move/player: ruchy fizyczne z Raspberry Pi
  * - move/web: ruchy z aplikacji webowej
  * - move/ai: ruchy od silnika szachowego
+ * - move/possible_moves/request: żądania możliwych ruchów z aplikacji webowej
+ * - engine/possible_moves/response: odpowiedzi z możliwymi ruchami od silnika szachowego
  * - status/raspi: statusy Raspberry Pi (przekazywane do UI)
  * - status/engine: statusy silnika szachowego (przekazywane do UI)
  * - control/restart: sygnały restartu gry
@@ -279,6 +281,89 @@ class MqttListenCommand extends Command
                 }
             });
 
+            // Subskrybuj żądania możliwych ruchów z aplikacji webowej
+            $this->mqtt->subscribe('move/possible_moves/request', function($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] 🔍 <fg=cyan>Possible moves request:</> $msg");
+                
+                $this->logger?->info('MQTT: Possible moves request received', [
+                    'topic' => $topic,
+                    'message' => $msg,
+                    'timestamp' => $timestamp
+                ]);
+
+                $decoded = json_decode($msg, true);
+                if ($decoded && isset($decoded['position'])) {
+                    try {
+                        // Przekaż żądanie do silnika szachowego
+                        $this->mqtt->publish('engine/possible_moves/request', [
+                            'position' => $decoded['position']
+                        ]);
+                        
+                        $io->text("    ✅ <fg=green>Request forwarded to engine:</> {$decoded['position']}");
+                        
+                        $this->logger?->info('MQTT: Possible moves request forwarded to engine', [
+                            'position' => $decoded['position']
+                        ]);
+                    } catch (\Exception $e) {
+                        $io->error("    ❌ Failed to forward request to engine: " . $e->getMessage());
+                        $this->logger?->error('MQTT: Failed to forward possible moves request', [
+                            'error' => $e->getMessage(),
+                            'position' => $decoded['position'] ?? 'unknown'
+                        ]);
+                    }
+                } else {
+                    $io->warning("    ⚠️ Invalid possible moves request format");
+                    $this->logger?->warning('MQTT: Invalid possible moves request format', [
+                        'message' => $msg
+                    ]);
+                }
+            });
+
+            // Subskrybuj odpowiedzi możliwych ruchów od silnika szachowego
+            $this->mqtt->subscribe('engine/possible_moves/response', function($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] 📋 <fg=cyan>Possible moves response from engine:</> $msg");
+                
+                $this->logger?->info('MQTT: Possible moves response received from engine', [
+                    'topic' => $topic,
+                    'message' => $msg,
+                    'timestamp' => $timestamp
+                ]);
+
+                $decoded = json_decode($msg, true);
+                if ($decoded && isset($decoded['position'], $decoded['moves'])) {
+                    try {
+                        // Przekaż odpowiedź do aplikacji webowej przez WebSocket
+                        $this->notifier->broadcast([
+                            'type' => 'possible_moves',
+                            'position' => $decoded['position'],
+                            'moves' => $decoded['moves']
+                        ]);
+                        
+                        $movesCount = count($decoded['moves']);
+                        $io->text("    ✅ <fg=green>Response sent to webapp:</> {$decoded['position']} → $movesCount moves");
+                        
+                        $this->logger?->info('MQTT: Possible moves response sent to webapp', [
+                            'position' => $decoded['position'],
+                            'moves_count' => $movesCount,
+                            'moves' => $decoded['moves']
+                        ]);
+                    } catch (\Exception $e) {
+                        $io->error("    ❌ Failed to send response to webapp: " . $e->getMessage());
+                        $this->logger?->error('MQTT: Failed to send possible moves response to webapp', [
+                            'error' => $e->getMessage(),
+                            'position' => $decoded['position'] ?? 'unknown'
+                        ]);
+                    }
+                } else {
+                    $io->warning("    ⚠️ Invalid possible moves response format from engine");
+                    $this->logger?->warning('MQTT: Invalid possible moves response format from engine', [
+                        'message' => $msg
+                    ]);
+                }
+            });
+
             // Dodatkowa subscription na wszystkie move topiki dla debugging
             $this->mqtt->subscribe('move/+', function($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
@@ -292,7 +377,7 @@ class MqttListenCommand extends Command
             });
 
             $io->success('MQTT subscriptions established');
-            $io->comment('Subscribed to: move/player, move/web, move/ai, status/raspi, status/engine, control/restart, move/+');
+            $io->comment('Subscribed to: move/player, move/web, move/ai, status/raspi, status/engine, control/restart, move/possible_moves/request, engine/possible_moves/response, move/+');
             $io->comment('Listening for moves and status updates... Press Ctrl+C to stop');
             
             $this->logger?->info('MQTT Listener started successfully');
