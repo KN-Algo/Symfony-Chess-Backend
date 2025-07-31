@@ -76,7 +76,7 @@ symfony server:start
 
 ### 5. Uruchomienie MQTT Listener
 ```bash
-php bin/console app:mqtt:listen
+php bin/console app:mqtt-listen
 ```
 
 ## 🎮 Użytkowanie
