@@ -123,7 +123,7 @@ eventSource.onmessage = function(event) {
 
 ## 🔧 Komendy
 
-- `php bin/console app:mqtt:listen` - Uruchom listener MQTT
+- `php bin/console app:mqtt-listen` - Uruchom listener MQTT
 - `php bin/console cache:clear` - Wyczyść cache
 - `php bin/console debug:router` - Pokaż dostępne trasy
 
