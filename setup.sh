@@ -3,7 +3,18 @@
 # Ustawienia – ścieżki i zmienne środowiskowe (do uzupełnienia przez użytkownika)
 MERCURE_DIR="$HOME/mercure"                              # katalog Mercure
 BACKEND_DIR="$(pwd)"                                     # katalog projektu Symfony (backend)
-JWT_KEY="YourSecretJWTKey"              # klucz JWT dla Mercure
+JWT_KEY="YourSecretJWTKey"                               # klucz JWT dla Mercure
+
+if [[ $1 == "--help" || $1 == "-h" ]]; then
+    echo "Użycie: $0 [--jwt <klucz>] [--force]"
+    echo "  --jwt <klucz>   Podaje klucz JWT dla Mercure (domyślnie: $JWT_KEY)"
+    echo "  --force         Wymusza instalację potrzebnych narzędzi bez pytania"
+    exit 0
+fi
+
+if [[ "$1" == "--jwt" && -n "$3" ]]; then
+    JWT_KEY="$3"
+fi
 
 # Parametr --force dla automatycznego trybu
 FORCE=false
