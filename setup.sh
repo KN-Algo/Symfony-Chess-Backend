@@ -186,7 +186,44 @@ else
     print_success "Composer jest dostępny."
 fi
 
-# 3. Sprawdzenie Mercure
+# 3. Sprawdzenie Symfony CLI
+echo -e "\n=== Sprawdzanie Symfony CLI ==="
+if ! command -v symfony > /dev/null 2>&1; then
+    print_error "Symfony CLI nie jest zainstalowany."
+    if [ "$FORCE" = true ]; then
+        echo "Instaluję Symfony CLI (tryb --force)..."
+        # Instalacja Symfony CLI
+        curl -1sLf 'https://dl.cloudsmith.io/public/symfony/stable/setup.deb.sh' | sudo -E bash
+        sudo apt install -y symfony-cli
+        
+        if command -v symfony > /dev/null 2>&1; then
+            print_success "Symfony CLI zainstalowany pomyślnie."
+        else
+            print_error "Nie udało się zainstalować Symfony CLI."
+            print_warning "Będzie używany php -S jako alternatywa."
+        fi
+    else
+        read -p "Symfony CLI nie jest zainstalowany. Czy chcesz go pobrać i zainstalować? (T/n): " confirm
+        if [[ ! $confirm =~ ^[Nn] ]]; then
+            echo "Pobieranie i instalacja Symfony CLI..."
+            curl -1sLf 'https://dl.cloudsmith.io/public/symfony/stable/setup.deb.sh' | sudo -E bash
+            sudo apt install -y symfony-cli
+            
+            if command -v symfony > /dev/null 2>&1; then
+                print_success "Symfony CLI zainstalowany pomyślnie."
+            else
+                print_error "Nie udało się zainstalować Symfony CLI."
+                print_warning "Będzie używany php -S jako alternatywa."
+            fi
+        else
+            print_warning "Symfony CLI nie został zainstalowany. Będzie używany php -S jako alternatywa."
+        fi
+    fi
+else
+    print_success "Symfony CLI jest dostępny."
+fi
+
+# 4. Sprawdzenie Mercure
 echo -e "\n=== Sprawdzanie Mercure ==="
 if [ ! -f "$MERCURE_DIR/mercure" ]; then
     print_error "Mercure nie został znaleziony w katalogu: $MERCURE_DIR"
@@ -375,7 +412,7 @@ EOF
     print_success "Plik dev.Caddyfile zaktualizowany pomyślnie."
 fi
 
-# 4. Sprawdzenie serwera MQTT (Mosquitto)
+# 5. Sprawdzenie serwera MQTT (Mosquitto)
 echo -e "\n=== Sprawdzanie Mosquitto MQTT ==="
 if ! systemctl is-active --quiet mosquitto 2>/dev/null && ! service mosquitto status > /dev/null 2>&1; then
     print_error "Broker Mosquitto MQTT nie jest zainstalowany lub nie działa."
@@ -402,7 +439,7 @@ else
     print_success "Mosquitto jest zainstalowany i uruchomiony."
 fi
 
-# 5. Instalacja zależności Composer
+# 6. Instalacja zależności Composer
 echo -e "\n=== Instalacja zależności projektu ==="
 cd "$BACKEND_DIR"
 if [ -f "composer.json" ]; then
@@ -413,7 +450,7 @@ else
     print_warning "Nie znaleziono pliku composer.json w katalogu projektu."
 fi
 
-# 5.5. Sprawdzenie i tworzenie pliku .env
+# 6.5. Sprawdzenie i tworzenie pliku .env
 echo -e "\n=== Sprawdzanie pliku .env ==="
 ENV_PATH="$BACKEND_DIR/.env"
 if [ ! -f "$ENV_PATH" ]; then
@@ -434,7 +471,7 @@ else
     print_success "Plik .env już istnieje."
 fi
 
-# 6. Uruchomienie procesów
+# 7. Uruchomienie procesów
 echo -e "\n=== Uruchamianie usług ==="
 
 # Sprawdzenie czy procesy już działają
@@ -600,19 +637,33 @@ if [ "$ALL_PATHS_VALID" = true ]; then
         fi
         sleep 2
         
-        # Sprawdź czy symfony CLI jest dostępny
+        # Sprawdź czy symfony CLI jest dostępny, jeśli nie to zainstaluj
         if ! command -v symfony > /dev/null 2>&1; then
-            print_warning "Symfony CLI nie jest zainstalowany. Używam php -S do uruchomienia serwera..."
-            if command -v gnome-terminal > /dev/null 2>&1; then
-                gnome-terminal -- bash -c "cd '$BACKEND_DIR'; echo 'Uruchamianie serwera PHP (port 8000)...'; php -S 127.0.0.1:8000 -t public; echo 'Serwer PHP zatrzymany. Naciśnij Enter aby zamknąć...'; read"
-            elif command -v xterm > /dev/null 2>&1; then
-                xterm -e "cd '$BACKEND_DIR'; echo 'Uruchamianie serwera PHP (port 8000)...'; php -S 127.0.0.1:8000 -t public; echo 'Serwer PHP zatrzymany. Naciśnij Enter aby zamknąć...'; read" &
+            print_warning "Symfony CLI nie jest zainstalowany. Instaluję automatycznie..."
+            
+            # Instalacja Symfony CLI
+            curl -1sLf 'https://dl.cloudsmith.io/public/symfony/stable/setup.deb.sh' | sudo -E bash > /dev/null 2>&1
+            sudo apt install -y symfony-cli > /dev/null 2>&1
+            
+            if ! command -v symfony > /dev/null 2>&1; then
+                print_error "Nie udało się zainstalować Symfony CLI. Używam php -S jako fallback..."
+                if command -v gnome-terminal > /dev/null 2>&1; then
+                    gnome-terminal -- bash -c "cd '$BACKEND_DIR'; echo 'Uruchamianie serwera PHP (port 8000)...'; php -S 127.0.0.1:8000 -t public; echo 'Serwer PHP zatrzymany. Naciśnij Enter aby zamknąć...'; read"
+                elif command -v xterm > /dev/null 2>&1; then
+                    xterm -e "cd '$BACKEND_DIR'; echo 'Uruchamianie serwera PHP (port 8000)...'; php -S 127.0.0.1:8000 -t public; echo 'Serwer PHP zatrzymany. Naciśnij Enter aby zamknąć...'; read" &
+                else
+                    # Fallback - uruchom w tle
+                    nohup php -S 127.0.0.1:8000 -t public > symfony.log 2>&1 &
+                    echo "Serwer PHP uruchomiony w tle (log: $BACKEND_DIR/symfony.log)"
+                fi
+                sleep 3
             else
-                # Fallback - uruchom w tle
-                nohup php -S 127.0.0.1:8000 -t public > symfony.log 2>&1 &
-                echo "Serwer PHP uruchomiony w tle (log: $BACKEND_DIR/symfony.log)"
+                print_success "Symfony CLI zainstalowany pomyślnie."
             fi
-        else
+        fi
+        
+        # Używaj Symfony CLI jeśli jest dostępny
+        if command -v symfony > /dev/null 2>&1; then
             if command -v gnome-terminal > /dev/null 2>&1; then
                 gnome-terminal -- bash -c "cd '$BACKEND_DIR'; echo 'Uruchamianie serwera Symfony...'; symfony server:start; echo 'Serwer Symfony zatrzymany. Naciśnij Enter aby zamknąć...'; read"
             elif command -v xterm > /dev/null 2>&1; then
