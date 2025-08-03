@@ -6,9 +6,9 @@ BACKEND_DIR="$(pwd)"                                     # katalog projektu Symf
 JWT_KEY="YourSecretJWTKey"                               # klucz JWT dla Mercure
 
 if [[ $1 == "--help" || $1 == "-h" ]]; then
-    echo "Użycie: $0 [--jwt <klucz>] [--force]"
-    echo "  --jwt <klucz>   Podaje klucz JWT dla Mercure (domyślnie: $JWT_KEY)"
+    echo "Użycie: $0 [--force] [--jwt <klucz>] "
     echo "  --force         Wymusza instalację potrzebnych narzędzi bez pytania"
+    echo "  --jwt <klucz>   Podaje klucz JWT dla Mercure (domyślnie: $JWT_KEY)"
     exit 0
 fi
 
