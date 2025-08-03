@@ -1,14 +1,24 @@
 # Parametr -Force dla automatycznego trybu
 param(
-    [Switch]$Force
+    [Switch]$Force,
+    [string]$JwtParam  # klucz JWT dla Mercure
 )
 
 # Ustawienia – ścieżki i zmienne środowiskowe (do uzupełnienia przez użytkownika)
-$mercureDir = "C:\sciezka\do\mercure"    # katalog Mercure
-$backendDir = "C:\sciezka\do\backend"    # katalog projektu Symfony (backend)
-$jwtKey    = "TwójSekretnyJWTKey"        # klucz JWT dla Mercure
-$phpPath   = "C:\PHP\php.exe"           # ścieżka do php.exe (jeśli nie w PATH)
+$mercureDir = "C:\Program Files (x86)\mercure"    # katalog Mercure
+$backendDir = $PSScriptRoot    # katalog projektu Symfony (backend)
+$jwtKey    = "TwójSekretnyJWTKey"        # domyślny klucz JWT dla Mercure
+$phpPath   = "C:\PHP\php.exe"           # opcjonalna ścieżka do php.exe (jeśli nie w PATH)
 
+
+# 0. Sprawdzenie klucza JWT
+if (-not $JwtParam) {
+    Write-Information "Nie podano klucza JWT. Używam domyślnego klucza."
+} else {
+    Write-Host "Używam podanego klucza JWT: $JwtParam"
+    $jwtKey = $JwtParam
+}
+Write-Information "Bieżący katalog skryptu: $backendDir"
 
 # 1. Sprawdzenie PHP (>= 8.2)
 Write-Host "=== Sprawdzanie PHP 8.2+ ==="
