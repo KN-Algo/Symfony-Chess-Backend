@@ -1,15 +1,20 @@
 #!/bin/bash
 
+# Ustawienia – ścieżki i zmienne środowiskowe (do uzupełnienia przez użytkownika)
+MERCURE_DIR="$HOME/mercure"                              # katalog Mercure
+BACKEND_DIR="$(pwd)"                                     # katalog projektu Symfony (backend)
+JWT_KEY="YourSecretJWTKey"              # klucz JWT dla Mercure
+
 # Parametr --force dla automatycznego trybu
 FORCE=false
 if [[ "$1" == "--force" ]]; then
     FORCE=true
 fi
 
-# Ustawienia – ścieżki i zmienne środowiskowe (do uzupełnienia przez użytkownika)
-MERCURE_DIR="$HOME/mercure"                              # katalog Mercure
-BACKEND_DIR="$(pwd)"                                     # katalog projektu Symfony (backend)
-JWT_KEY="YourSecretJWTKey"              # klucz JWT dla Mercure
+# Parametr --jwt dla podania klucza JWT
+if [[ "$2" == "--jwt" ]]; then
+    JWT_KEY="$3"
+fi
 
 # Kolory dla output
 RED='\033[0;31m'
