@@ -4,6 +4,16 @@ param(
     [string]$JwtParam  # klucz JWT dla Mercure
 )
 
+# Sprawdzenie wersji PowerShell
+if ($PSVersionTable.PSVersion.Major -lt 5) {
+    Write-Error "Ten skrypt wymaga PowerShell 5.0 lub nowszego. Bieżąca wersja: $($PSVersionTable.PSVersion)"
+    exit 1
+}
+
+# Ustawienie encoding dla lepszej kompatybilności
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
 # Ustawienia – ścieżki i zmienne środowiskowe (do uzupełnienia przez użytkownika)
 $mercureDir = "C:\Program Files (x86)\mercure"    # katalog Mercure
 $backendDir = $PSScriptRoot    # katalog projektu Symfony (backend)
@@ -245,8 +255,8 @@ http://localhost:3000 {
 	redir / /.well-known/mercure/ui/
 
 	respond /healthz 200
-	respond /robots.txt ``User-agent: *
-	Disallow: /``
+	respond /robots.txt `User-agent: *
+	Disallow: /`
 	respond "Not Found" 404
 }
 "@
@@ -317,8 +327,8 @@ http://localhost:3000 {
 	redir / /.well-known/mercure/ui/
 
 	respond /healthz 200
-	respond /robots.txt ``User-agent: *
-	Disallow: /``
+	respond /robots.txt `User-agent: *
+	Disallow: /`
 	respond "Not Found" 404
 }
 "@
@@ -378,8 +388,8 @@ http://localhost:3000 {
 	redir / /.well-known/mercure/ui/
 
 	respond /healthz 200
-	respond /robots.txt ``User-agent: *
-	Disallow: /``
+	respond /robots.txt `User-agent: *
+	Disallow: /`
 	respond "Not Found" 404
 }
 "@
