@@ -270,7 +270,7 @@ if ($JwtParam) {
     $jwtKey = $JwtParam
     Log "Using provided JWT key."
 } else {
-    $jwtKey = "DefaultJWTKey"
+    $jwtKey = "00a563e20f5b32ce9e85fc801396be97"
     Log "Using default JWT key."
 }
 
