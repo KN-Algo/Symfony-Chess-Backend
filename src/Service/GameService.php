@@ -147,7 +147,17 @@ class GameService
         // 1) Odrzuć ruch w stanie gry
         $this->state->rejectMove($from, $to, $reason);
 
-        // 2) Powiadomienie do UI o odrzuceniu ruchu
+        // 2) Jeśli ruch był fizyczny, powiadom RPI o konieczności cofnięcia ruchu
+        if ($physical) {
+            $this->mqtt->publish('move/raspi/rejected', [
+                'from' => $from,
+                'to' => $to,
+                'reason' => $reason,
+                'action' => 'revert_move' // RPI powinno przywrócić pionek na $from
+            ]);
+        }
+
+        // 3) Powiadomienie do UI o odrzuceniu ruchu
         $this->notifier->broadcast([
             'type' => 'move_rejected',
             'move' => compact('from', 'to'),
