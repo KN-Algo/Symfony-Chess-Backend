@@ -423,12 +423,18 @@ class MqttListenCommand extends Command
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['position'], $decoded['moves'])) {
                     try {
-                        // Przekaż odpowiedź do aplikacji webowej przez WebSocket
-                        $this->notifier->broadcast([
+                        // DODAJ DODATKOWE LOGOWANIE
+                        $broadcastData = [
                             'type' => 'possible_moves',
                             'position' => $decoded['position'],
                             'moves' => $decoded['moves']
-                        ]);
+                        ];
+                        
+                        $io->text("    🔄 <fg=yellow>Broadcasting to UI:</> " . json_encode($broadcastData));
+                        $this->logger?->info('MQTT: Broadcasting possible moves to UI', $broadcastData);
+                        
+                        // Przekaż odpowiedź do aplikacji webowej przez WebSocket
+                        $this->notifier->broadcast($broadcastData);
                         
                         $movesCount = count($decoded['moves']);
                         $io->text("    ✅ <fg=green>Response sent to webapp:</> {$decoded['position']} → $movesCount moves");

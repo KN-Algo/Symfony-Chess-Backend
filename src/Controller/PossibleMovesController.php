@@ -2,6 +2,7 @@
 namespace App\Controller;
 
 use App\Service\MqttService;
+use App\Service\NotifierService;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Request;
 use Symfony\Component\HttpFoundation\Response;
@@ -24,8 +25,12 @@ class PossibleMovesController extends AbstractController
 {
     /**
      * @param MqttService $mqtt Serwis MQTT do publikacji żądań możliwych ruchów
+     * @param NotifierService $notifier Serwis powiadomień do testowania Mercure
      */
-    public function __construct(private MqttService $mqtt) {}
+    public function __construct(
+        private MqttService $mqtt,
+        private NotifierService $notifier
+    ) {}
 
     /**
      * Żąda możliwych ruchów dla pionka na określonej pozycji.
@@ -80,6 +85,48 @@ class PossibleMovesController extends AbstractController
             return $this->json(['status' => 'request_sent']);
         } catch (\Exception $e) {
             return $this->json(['error' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Test endpoint do bezpośredniego testowania Mercure.
+     * 
+     * @return Response Odpowiedź JSON z potwierdzeniem
+     */
+    #[Route('/test-mercure', methods: ['GET', 'POST'])]
+    public function testMercure(): Response
+    {
+        file_put_contents('test-mercure.log', "===== TEST MERCURE ENDPOINT HIT ===== " . date('Y-m-d H:i:s') . "\n", FILE_APPEND);
+        
+        try {
+            // Test bezpośredniego wysłania possible_moves
+            $testData = [
+                'type' => 'possible_moves',
+                'position' => 'e2',
+                'moves' => ['e3', 'e4']
+            ];
+            
+            file_put_contents('test-mercure.log', 'Test data prepared: ' . json_encode($testData) . "\n", FILE_APPEND);
+            
+            $this->notifier->broadcast($testData);
+            
+            file_put_contents('test-mercure.log', "Broadcast completed\n", FILE_APPEND);
+            
+            $response = [
+                'status' => 'test_sent',
+                'data' => $testData,
+                'message' => 'Check your browser console for Mercure events'
+            ];
+            
+            file_put_contents('test-mercure.log', 'Response prepared: ' . json_encode($response) . "\n", FILE_APPEND);
+            
+            return $this->json($response);
+        } catch (\Exception $e) {
+            file_put_contents('test-mercure.log', 'ERROR in test endpoint: ' . $e->getMessage() . "\n", FILE_APPEND);
+            return $this->json([
+                'status' => 'error',
+                'error' => $e->getMessage()
+            ], 500);
         }
     }
 }
