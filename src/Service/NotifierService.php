@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use Symfony\Component\Mercure\HubInterface;
@@ -24,10 +25,12 @@ class NotifierService
     /**
      * @param HubInterface $hub Hub Mercure do publikacji aktualizacji
      * @param HttpClientInterface $httpClient HTTP client do bezpośredniej komunikacji z Mercure
+     * @param string $mercureUrl URL hub'a Mercure z zmiennej środowiskowej
      */
     public function __construct(
-        private HubInterface $hub, 
-        private HttpClientInterface $httpClient
+        private HubInterface $hub,
+        private HttpClientInterface $httpClient,
+        private string $mercureUrl
     ) {}
 
     /**
@@ -36,9 +39,9 @@ class NotifierService
     private function publishDirectly(string $topic, string $data): string
     {
         $token = $this->generateJwtToken();
-        
+
         try {
-            $response = $this->httpClient->request('POST', 'http://localhost:3000/.well-known/mercure', [
+            $response = $this->httpClient->request('POST', $this->mercureUrl, [
                 'headers' => [
                     'Authorization' => 'Bearer ' . $token,
                     'Content-Type' => 'application/x-www-form-urlencoded',
@@ -48,7 +51,7 @@ class NotifierService
                     'data' => $data,
                 ])
             ]);
-            
+
             return $response->getContent();
         } catch (\Exception $e) {
             throw new \Exception('Failed to publish to Mercure: ' . $e->getMessage());
@@ -96,42 +99,40 @@ class NotifierService
         // SPRÓBUJ Z PEŁNYM URL
         $json = json_encode($data);
         $topic = 'http://127.0.0.1:8000/chess/updates';  // ZMIANA: pełny URL
-        
+
         $logFile = __DIR__ . '/../../public/mercure-debug.log';
         $timestamp = date('Y-m-d H:i:s');
-        
+
         $log = "===== NotifierService::broadcast() ===== {$timestamp}\n";
         $log .= "Topic: {$topic}\n";
         $log .= "Data: {$json}\n";
-        
+
         try {
             // Spróbuj bezpośredniego HTTP zapytania
             $log .= "Attempting DIRECT HTTP publish...\n";
             $result = $this->publishDirectly($topic, $json);
             $log .= "Direct HTTP result: {$result}\n";
             $log .= "Direct HTTP SUCCESS!\n";
-            
         } catch (\Exception $e) {
             $log .= "Direct HTTP failed: " . $e->getMessage() . "\n";
-            
+
             // Fallback do Symfony Hub
             if ($this->hub) {
                 $log .= "Fallback to Symfony Hub...\n";
                 $log .= "Hub available: YES\n";
                 $log .= "Hub class: " . get_class($this->hub) . "\n";
-                
+
                 try {
                     $update = new Update($topic, $json, false);
                     $log .= "Update object created successfully (PUBLIC)\n";
                     $log .= "Update topic: " . ($update->getTopics()[0] ?? 'NO_TOPIC') . "\n";
                     $log .= "Update data: " . $update->getData() . "\n";
                     $log .= "Update is private: " . ($update->isPrivate() ? 'YES' : 'NO') . "\n";
-                    
+
                     $log .= "Attempting Symfony Hub publish...\n";
                     $hubResult = $this->hub->publish($update);
                     $log .= "Hub publish result: '" . $hubResult . "'\n";
                     $log .= "Hub publish result type: " . gettype($hubResult) . "\n";
-                    
                 } catch (\Exception $hubError) {
                     $log .= "Symfony Hub also failed: " . $hubError->getMessage() . "\n";
                     throw $hubError;
@@ -141,7 +142,7 @@ class NotifierService
                 throw $e;
             }
         }
-        
+
         $log .= "===== Broadcast completed =====\n";
         file_put_contents($logFile, $log, FILE_APPEND | LOCK_EX);
     }

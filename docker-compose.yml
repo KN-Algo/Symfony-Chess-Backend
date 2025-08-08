@@ -1,0 +1,95 @@
+services:
+  backend:
+    build: .
+    image: symfony_chess_backend:latest
+    container_name: symfony-backend
+    # Uruchamiamy wbudowany serwer PHP binding na 0.0.0.0
+    command: php -S 0.0.0.0:8000 -t public
+    ports:
+      - 8000:8000
+    environment:
+
+      # MQTT Broker w sieci Docker
+      MQTT_BROKER: mosquitto
+      MQTT_PORT:   1883
+      MQTT_CLIENT_ID: szachmat_backend
+
+      # Mercure Hub w sieci Docker (używamy nazwy kontenera)
+      MERCURE_URL:        http://mercure:3000/.well-known/mercure
+      # Publiczny URL dla front-endu w przeglądarce (localhost dla dostępu z hosta)
+      MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
+      MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
+
+      # External Components (poza Dockerem, dostępne przez sieć hosta)
+      RASPBERRY_PI_URL:   http://host.docker.internal:8080
+      CHESS_ENGINE_URL:   http://host.docker.internal:5000
+    volumes:
+      - symfony-var:/app/var
+    networks:
+      - chess-network
+    depends_on:
+      - mosquitto
+      - mercure
+
+  mqtt-listener:
+    image: symfony_chess_backend:latest
+    container_name: symfony-mqtt-listener
+    command: php bin/console app:mqtt-listen
+    environment:
+
+      # MQTT Broker w sieci Docker
+      MQTT_BROKER: mosquitto
+      MQTT_PORT:   1883
+      MQTT_CLIENT_ID: szachmat_backend
+
+      # Mercure Hub w sieci Docker (używamy nazwy kontenera)
+      MERCURE_URL:        http://mercure:3000/.well-known/mercure
+      MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
+      MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
+
+      # External Components (poza Dockerem, dostępne przez sieć hosta)
+      RASPBERRY_PI_URL:   http://host.docker.internal:8080
+      CHESS_ENGINE_URL:   http://host.docker.internal:5000
+    volumes:
+      - symfony-var:/app/var
+    networks:
+      - chess-network
+    depends_on:
+      - backend
+      - mosquitto
+      - mercure
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    container_name: mqtt-broker
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - chess-network
+    ports:
+      - 1883:1883
+
+  mercure:
+    image: dunglas/mercure
+    container_name: mercure-hub
+    # Montujemy lokalny dev.Caddyfile, by Caddy uruchomił Mercure zgodnie z dokumentacją
+    volumes:
+      - ./dev.Caddyfile:/etc/caddy/dev.Caddyfile:ro
+    environment:
+      MERCURE_PUBLISHER_JWT_KEY: "00a563e20f5b32ce9e85fc801396be97"
+      MERCURE_SUBSCRIBER_JWT_KEY: "token_jwt"
+    command: /usr/bin/caddy run --config /etc/caddy/dev.Caddyfile
+    networks:
+      - chess-network
+    ports:
+      - 3000:3000
+    depends_on:
+      - mosquitto
+
+volumes:
+  # Wolumen współdzielony dla /app/var (SQLite i logi)
+  symfony-var: {}
+
+networks:
+  chess-network:
+    driver: bridge
