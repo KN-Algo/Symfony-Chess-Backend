@@ -1,11 +1,12 @@
 mercure:
     hubs:
         default:
-            # Adres Twojego Mercure hubu, bierze wartość z .env
-            url: '%env(MERCURE_URL)%'
-            public_url: '%env(MERCURE_URL)%'
+            # Adres wewnętrzny w Dockerze dla publishera (backend -> mercure)
+            url: "%env(MERCURE_URL)%"
+            # Publiczny URL dla subskrybentów (przeglądarka -> mercure)
+            public_url: "%env(MERCURE_PUBLIC_URL)%"
             # Sekret JWT do podpisywania tokenów (z .env)
             jwt:
-                secret: '%env(MERCURE_JWT_SECRET)%'
+                secret: "%env(MERCURE_JWT_SECRET)%"
                 publish: ["*"]
                 subscribe: ["*"]

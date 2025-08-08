@@ -29,9 +29,13 @@ RUN curl -sS https://get.symfony.com/cli/installer | bash \
 WORKDIR /app
 COPY . .
 
-# 5) Instalacja zależności PHP
-RUN composer install --no-interaction --optimize-autoloader
+# 5) Utwórz minimalny plik .env dla composer
+RUN echo "APP_ENV=prod" > .env && \
+    echo "DATABASE_URL=sqlite:///app/var/data_prod.db" >> .env
 
-# 6) Domyślna komenda: serwer Symfony na porcie 8000
+# 6) Instalacja zależności PHP (bez wywoływania skryptów post-install)
+RUN composer install --no-interaction --optimize-autoloader --no-dev --no-scripts
+
+# 7) Domyślna komenda: serwer Symfony na porcie 8000
 # CMD ["symfony", "server:start", "--no-tls", "--port=8000"]
 CMD ["php", "-S", "0.0.0.0:8000", "-t", "public"]

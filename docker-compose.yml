@@ -14,13 +14,15 @@ services:
       MQTT_PORT:   1883
       MQTT_CLIENT_ID: szachmat_backend
 
-      # Mercure Hub w sieci Docker
-      MERCURE_URL:        http://localhost:3000/.well-known/mercure
-      # Publiczny URL dla front-endu w przeglądarce
+      # Mercure Hub w sieci Docker (używamy nazwy kontenera)
+      MERCURE_URL:        http://mercure:3000/.well-known/mercure
+      # Publiczny URL dla front-endu w przeglądarce (localhost dla dostępu z hosta)
       MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
       MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
     volumes:
       - symfony-var:/app/var
+    networks:
+      - chess-network
     depends_on:
       - mosquitto
       - mercure
@@ -36,12 +38,14 @@ services:
       MQTT_PORT:   1883
       MQTT_CLIENT_ID: szachmat_backend
 
-      # Mercure Hub w sieci Docker
-      MERCURE_URL:        http://localhost:3000/.well-known/mercure
+      # Mercure Hub w sieci Docker (używamy nazwy kontenera)
+      MERCURE_URL:        http://mercure:3000/.well-known/mercure
       MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
       MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
     volumes:
       - symfony-var:/app/var
+    networks:
+      - chess-network
     depends_on:
       - backend
       - mosquitto
@@ -50,6 +54,10 @@ services:
   mosquitto:
     image: eclipse-mosquitto:2
     container_name: mqtt-broker
+    volumes:
+      - ./mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+    networks:
+      - chess-network
     ports:
       - 1883:1883
 
@@ -63,6 +71,8 @@ services:
       MERCURE_PUBLISHER_JWT_KEY: "00a563e20f5b32ce9e85fc801396be97"
       MERCURE_SUBSCRIBER_JWT_KEY: "token_jwt"
     command: /usr/bin/caddy run --config /etc/caddy/dev.Caddyfile
+    networks:
+      - chess-network
     ports:
       - 3000:3000
     depends_on:
@@ -71,3 +81,7 @@ services:
 volumes:
   # Wolumen współdzielony dla /app/var (SQLite i logi)
   symfony-var: {}
+
+networks:
+  chess-network:
+    driver: bridge

@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 use PhpMqtt\Client\MqttClient;
@@ -31,7 +32,7 @@ class HealthCheckService
 {
     /** @var int Timeout dla żądań HTTP w sekundach */
     private const TIMEOUT = 2; // timeout w sekundach - zmniejszony dla szybszej odpowiedzi
-    
+
     /** @var int Timeout dla połączeń MQTT w sekundach */
     private const MQTT_TIMEOUT = 3; // krótszy timeout dla MQTT
 
@@ -47,7 +48,7 @@ class HealthCheckService
     public function __construct(
         private string $mqttBroker,
         private int $mqttPort,
-        private string $mercureUrl = 'http://127.0.0.1:3000',
+        private string $mercureUrl,
         private string $raspberryUrl = 'http://192.168.1.100:8080', // zastępczy URL
         private string $chessEngineUrl = 'http://192.168.1.101:5000', // zastępczy URL
         private ?LoggerInterface $logger = null,
@@ -79,13 +80,13 @@ class HealthCheckService
     public function getSystemHealth(): array
     {
         $startTime = microtime(true);
-        
+
         // Rozpocznij wszystkie sprawdzenia HTTP asynchronicznie
         $responses = [];
-        
+
         // MQTT sprawdzamy synchronicznie (szybki test)
         $mqttResult = $this->checkMqttConnection();
-        
+
         // Żądania HTTP asynchronicznie
         try {
             $responses['mercure'] = $this->httpClient->request('GET', $this->mercureUrl, [
@@ -94,7 +95,7 @@ class HealthCheckService
         } catch (\Exception $e) {
             $responses['mercure'] = null;
         }
-        
+
         try {
             $responses['raspberry'] = $this->httpClient->request('GET', $this->raspberryUrl . '/health', [
                 'timeout' => self::TIMEOUT
@@ -102,7 +103,7 @@ class HealthCheckService
         } catch (\Exception $e) {
             $responses['raspberry'] = null;
         }
-        
+
         try {
             $responses['chess_engine'] = $this->httpClient->request('GET', $this->chessEngineUrl . '/health', [
                 'timeout' => self::TIMEOUT
@@ -110,24 +111,27 @@ class HealthCheckService
         } catch (\Exception $e) {
             $responses['chess_engine'] = null;
         }
-        
+
         // Przetwórz odpowiedzi
         $mercureResult = $this->processMercureResponse($responses['mercure']);
         $raspberryResult = $this->processRaspberryResponse($responses['raspberry']);
         $chessEngineResult = $this->processChessEngineResponse($responses['chess_engine']);
-        
+
         $results = [
             'mqtt' => $mqttResult,
             'mercure' => $mercureResult,
             'raspberry' => $raspberryResult,
             'chess_engine' => $chessEngineResult,
             'overall_status' => $this->calculateOverallStatusFromResults(
-                $mqttResult, $mercureResult, $raspberryResult, $chessEngineResult
+                $mqttResult,
+                $mercureResult,
+                $raspberryResult,
+                $chessEngineResult
             ),
             'timestamp' => date('c'),
             'total_time' => round((microtime(true) - $startTime) * 1000, 2) . 'ms'
         ];
-        
+
         return $results;
     }
 
@@ -268,14 +272,14 @@ class HealthCheckService
     private function calculateOverallStatusFromResults($mqttStatus, $mercureStatus, $raspberryStatus, $chessEngineStatus): string
     {
         $criticalServices = [$mqttStatus, $mercureStatus];
-        
+
         // Sprawdź czy wszystkie krytyczne usługi są zdrowe
         foreach ($criticalServices as $status) {
             if ($status['status'] === 'unhealthy') {
                 return 'unhealthy';
             }
         }
-        
+
         // Sprawdź czy są jakiekolwiek ostrzeżenia
         $allServices = [$mqttStatus, $mercureStatus, $raspberryStatus, $chessEngineStatus];
         foreach ($allServices as $status) {
@@ -283,7 +287,7 @@ class HealthCheckService
                 return 'warning';
             }
         }
-        
+
         return 'healthy';
     }
 
@@ -292,20 +296,20 @@ class HealthCheckService
         try {
             $startTime = microtime(true);
             $clientId = 'health_check_' . uniqid();
-            
+
             // Ustawienia z krótszym limitem czasu
             $settings = (new ConnectionSettings())
                 ->setKeepAliveInterval(10)
                 ->setConnectTimeout(self::MQTT_TIMEOUT)
                 ->setSocketTimeout(self::MQTT_TIMEOUT);
-                
+
             $client = new MqttClient($this->mqttBroker, $this->mqttPort, $clientId);
-            
+
             $client->connect($settings, false);
             $client->disconnect();
-            
+
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
-            
+
             return [
                 'status' => 'healthy',
                 'message' => 'MQTT broker connection successful',
@@ -315,7 +319,7 @@ class HealthCheckService
         } catch (\Exception $e) {
             $this->logger?->error('MQTT health check failed: ' . $e->getMessage());
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
-            
+
             return [
                 'status' => 'unhealthy',
                 'message' => 'MQTT broker connection failed: ' . $e->getMessage(),
