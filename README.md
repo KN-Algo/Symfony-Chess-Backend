@@ -398,21 +398,3 @@ $env:MERCURE_PUBLISHER_JWT_KEY='TWÓJ_TOKEN_JWT'
 $env:MERCURE_SUBSCRIBER_JWT_KEY='TWÓJ_TOKEN_JWT'
 .\mercure.exe run --config dev.Caddyfile
 ```
-
-## 🚀 Status implementacji:
-
-✅ **Działające komponenty:**
-- MQTT komunikacja Backend ↔ RPi/Silnik
-- Walidacja wszystkich ruchów przez silnik  
-- Mercure real-time z HTTP+JWT
-- Możliwe ruchy w czasie rzeczywistym
-- Proper handling fizycznych i webowych ruchów
-- Cofanie nielegalnych ruchów fizycznych
-- Health check wszystkich komponentów
-- Szczegółowe logowanie i debugging
-
-🔄 **Gotowe do testowania:**
-- Pełny flow walidacji ruchów
-- Real-time komunikacja Web ↔ Backend ↔ RPi
-- Synchronizacja stanu przez silnik szachowy
-- Obsługa błędów i recovery
