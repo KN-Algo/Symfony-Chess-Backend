@@ -18,7 +18,7 @@ services:
       MERCURE_URL:        http://localhost:3000/.well-known/mercure
       # Publiczny URL dla front-endu w przeglądarce
       MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
-      MERCURE_JWT_SECRET: token_jwt
+      MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
     volumes:
       - symfony-var:/app/var
     depends_on:
@@ -39,7 +39,7 @@ services:
       # Mercure Hub w sieci Docker
       MERCURE_URL:        http://localhost:3000/.well-known/mercure
       MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
-      MERCURE_JWT_SECRET: token_jwt
+      MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
     volumes:
       - symfony-var:/app/var
     depends_on:
@@ -60,7 +60,7 @@ services:
     volumes:
       - ./dev.Caddyfile:/etc/caddy/dev.Caddyfile:ro
     environment:
-      MERCURE_PUBLISHER_JWT_KEY: "token_jwt"
+      MERCURE_PUBLISHER_JWT_KEY: "00a563e20f5b32ce9e85fc801396be97"
       MERCURE_SUBSCRIBER_JWT_KEY: "token_jwt"
     command: /usr/bin/caddy run --config /etc/caddy/dev.Caddyfile
     ports:
