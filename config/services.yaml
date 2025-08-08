@@ -33,3 +33,5 @@ services:
             $mqttBroker: "%env(MQTT_BROKER)%"
             $mqttPort: "%env(int:MQTT_PORT)%"
             $mercureUrl: "%env(MERCURE_URL)%"
+            $raspberryUrl: "%env(RASPBERRY_PI_URL)%"
+            $chessEngineUrl: "%env(CHESS_ENGINE_URL)%"

@@ -24,9 +24,6 @@ use Psr\Log\LoggerInterface;
  * - Asynchroniczne sprawdzenia HTTP
  * - Krótkie, konfigurowalne timeouty
  * - Równoległe testowanie wszystkich komponentów
- * 
- * @author Adrian Goral <adrian@example.com>
- * @since 1.0.0
  */
 class HealthCheckService
 {
@@ -36,12 +33,15 @@ class HealthCheckService
     /** @var int Timeout dla połączeń MQTT w sekundach */
     private const MQTT_TIMEOUT = 3; // krótszy timeout dla MQTT
 
+    /** @var int Próg czasu odpowiedzi w milisekundach - powyżej tego to warning */
+    private const RESPONSE_TIME_WARNING_THRESHOLD = 100;
+
     /**
      * @param string $mqttBroker Adres brokera MQTT
      * @param int $mqttPort Port brokera MQTT
      * @param string $mercureUrl URL hubu Mercure
-     * @param string $raspberryUrl URL endpointu Raspberry Pi (obecnie placeholder)
-     * @param string $chessEngineUrl URL endpointu silnika szachowego (obecnie placeholder)
+     * @param string $raspberryUrl URL endpointu Raspberry Pi
+     * @param string $chessEngineUrl URL endpointu silnika szachowego
      * @param LoggerInterface|null $logger Logger do zapisywania błędów (opcjonalny)
      * @param HttpClientInterface|null $httpClient Klient HTTP (zostanie utworzony jeśli null)
      */
@@ -49,8 +49,8 @@ class HealthCheckService
         private string $mqttBroker,
         private int $mqttPort,
         private string $mercureUrl,
-        private string $raspberryUrl = 'http://192.168.1.100:8080', // zastępczy URL
-        private string $chessEngineUrl = 'http://192.168.1.101:5000', // zastępczy URL
+        private string $raspberryUrl,
+        private string $chessEngineUrl,
         private ?LoggerInterface $logger = null,
         private ?HttpClientInterface $httpClient = null
     ) {
@@ -152,9 +152,14 @@ class HealthCheckService
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
             if ($statusCode >= 200 && $statusCode < 400) {
+                $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
+                $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
+                    ? "Mercure hub connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                    : 'Mercure hub connection successful';
+
                 return [
-                    'status' => 'healthy',
-                    'message' => 'Mercure hub connection successful',
+                    'status' => $status,
+                    'message' => $message,
                     'endpoint' => $this->mercureUrl,
                     'response_time' => $responseTime . 'ms',
                     'status_code' => $statusCode
@@ -183,11 +188,11 @@ class HealthCheckService
     {
         if ($response === null) {
             return [
-                'status' => 'warning',
-                'message' => 'Raspberry Pi not available (placeholder endpoint): Connection timeout',
+                'status' => 'unhealthy',
+                'message' => 'Raspberry Pi not available: Connection timeout or not deployed',
                 'endpoint' => $this->raspberryUrl,
                 'response_time' => null,
-                'note' => 'This is a placeholder endpoint - actual Raspberry Pi not yet deployed'
+                'note' => 'External component - ensure Raspberry Pi is running and accessible'
             ];
         }
 
@@ -197,9 +202,14 @@ class HealthCheckService
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
             if ($statusCode >= 200 && $statusCode < 400) {
+                $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
+                $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
+                    ? "Raspberry Pi connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                    : 'Raspberry Pi connection successful';
+
                 return [
-                    'status' => 'healthy',
-                    'message' => 'Raspberry Pi connection successful',
+                    'status' => $status,
+                    'message' => $message,
                     'endpoint' => $this->raspberryUrl,
                     'response_time' => $responseTime . 'ms',
                     'status_code' => $statusCode
@@ -215,11 +225,11 @@ class HealthCheckService
             }
         } catch (\Exception $e) {
             return [
-                'status' => 'warning',
-                'message' => 'Raspberry Pi not available (placeholder endpoint): ' . $e->getMessage(),
+                'status' => 'unhealthy',
+                'message' => 'Raspberry Pi not available: ' . $e->getMessage(),
                 'endpoint' => $this->raspberryUrl,
                 'response_time' => null,
-                'note' => 'This is a placeholder endpoint - actual Raspberry Pi not yet deployed'
+                'note' => 'External component - ensure Raspberry Pi is running and accessible'
             ];
         }
     }
@@ -228,11 +238,11 @@ class HealthCheckService
     {
         if ($response === null) {
             return [
-                'status' => 'warning',
-                'message' => 'Chess engine not available (placeholder endpoint): Connection timeout',
+                'status' => 'unhealthy',
+                'message' => 'Chess engine not available: Connection timeout or not deployed',
                 'endpoint' => $this->chessEngineUrl,
                 'response_time' => null,
-                'note' => 'This is a placeholder endpoint - actual chess engine not yet deployed'
+                'note' => 'External component - ensure Chess Engine is running and accessible'
             ];
         }
 
@@ -242,9 +252,14 @@ class HealthCheckService
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
             if ($statusCode >= 200 && $statusCode < 400) {
+                $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
+                $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
+                    ? "Chess engine connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                    : 'Chess engine connection successful';
+
                 return [
-                    'status' => 'healthy',
-                    'message' => 'Chess engine connection successful',
+                    'status' => $status,
+                    'message' => $message,
                     'endpoint' => $this->chessEngineUrl,
                     'response_time' => $responseTime . 'ms',
                     'status_code' => $statusCode
@@ -260,11 +275,11 @@ class HealthCheckService
             }
         } catch (\Exception $e) {
             return [
-                'status' => 'warning',
-                'message' => 'Chess engine not available (placeholder endpoint): ' . $e->getMessage(),
+                'status' => 'unhealthy',
+                'message' => 'Chess engine not available: ' . $e->getMessage(),
                 'endpoint' => $this->chessEngineUrl,
                 'response_time' => null,
-                'note' => 'This is a placeholder endpoint - actual chess engine not yet deployed'
+                'note' => 'External component - ensure Chess Engine is running and accessible'
             ];
         }
     }
@@ -272,6 +287,7 @@ class HealthCheckService
     private function calculateOverallStatusFromResults($mqttStatus, $mercureStatus, $raspberryStatus, $chessEngineStatus): string
     {
         $criticalServices = [$mqttStatus, $mercureStatus];
+        $externalServices = [$raspberryStatus, $chessEngineStatus];
 
         // Sprawdź czy wszystkie krytyczne usługi są zdrowe
         foreach ($criticalServices as $status) {
@@ -280,7 +296,21 @@ class HealthCheckService
             }
         }
 
-        // Sprawdź czy są jakiekolwiek ostrzeżenia
+        // Sprawdź czy krytyczne usługi mają ostrzeżenia
+        foreach ($criticalServices as $status) {
+            if ($status['status'] === 'warning') {
+                return 'warning';
+            }
+        }
+
+        // Sprawdź czy zewnętrzne komponenty są niedostępne
+        foreach ($externalServices as $status) {
+            if ($status['status'] === 'unhealthy') {
+                return 'warning'; // External component down = warning for overall system
+            }
+        }
+
+        // Sprawdź czy są jakiekolwiek inne ostrzeżenia
         $allServices = [$mqttStatus, $mercureStatus, $raspberryStatus, $chessEngineStatus];
         foreach ($allServices as $status) {
             if ($status['status'] === 'warning') {
@@ -310,9 +340,14 @@ class HealthCheckService
 
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
+            $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
+            $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
+                ? "MQTT broker connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                : 'MQTT broker connection successful';
+
             return [
-                'status' => 'healthy',
-                'message' => 'MQTT broker connection successful',
+                'status' => $status,
+                'message' => $message,
                 'endpoint' => "{$this->mqttBroker}:{$this->mqttPort}",
                 'response_time' => $responseTime . 'ms'
             ];

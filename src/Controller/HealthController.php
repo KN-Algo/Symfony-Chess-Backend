@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use App\Service\HealthCheckService;
@@ -72,7 +73,7 @@ class HealthController extends AbstractController
     public function healthApi(): Response
     {
         $healthData = $this->healthCheckService->getSystemHealth();
-        
+
         return $this->json($healthData);
     }
 }

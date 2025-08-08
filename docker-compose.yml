@@ -19,6 +19,10 @@ services:
       # Publiczny URL dla front-endu w przeglądarce (localhost dla dostępu z hosta)
       MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
       MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
+
+      # External Components (poza Dockerem, dostępne przez sieć hosta)
+      RASPBERRY_PI_URL:   http://host.docker.internal:8080
+      CHESS_ENGINE_URL:   http://host.docker.internal:5000
     volumes:
       - symfony-var:/app/var
     networks:
@@ -42,6 +46,10 @@ services:
       MERCURE_URL:        http://mercure:3000/.well-known/mercure
       MERCURE_PUBLIC_URL: http://localhost:3000/.well-known/mercure
       MERCURE_JWT_SECRET: 00a563e20f5b32ce9e85fc801396be97
+
+      # External Components (poza Dockerem, dostępne przez sieć hosta)
+      RASPBERRY_PI_URL:   http://host.docker.internal:8080
+      CHESS_ENGINE_URL:   http://host.docker.internal:5000
     volumes:
       - symfony-var:/app/var
     networks:
