@@ -473,9 +473,13 @@ Jeśli chcesz szybko uruchomić cały system bez lokalnej instalacji PHP i zale�
 
 3. **Uruchom kontenery:**
 
+> [!WARNING]
+> W dalszej części instrukcji jest stosowana tylko instrukcja Linux/mac - pamiętaj o uruchamianiu odpowiednich komend
+
+
     ```bash
     # Windows
-    docker-compose up --build -d
+    docker compose up --build -d
 
     # Linux/Mac
     docker compose up --build -d
