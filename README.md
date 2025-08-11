@@ -267,9 +267,6 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 ### `move/web` (Web App → Backend)
 
 ```json
-### `move/web` (Web App → Backend)
-
-```json
 {
     "from": "e2",
     "to": "e4",
