@@ -259,12 +259,155 @@ Web App (REST API) → Backend → control/restart → RPi + Silnik
 Backend → state/update + log/update + Mercure
 ```
 
-### 7. Statusy komponentów:
+## 📦 Przykładowe wiadomości MQTT na kanałach
 
-```
-RPi/Silnik → status/* → Backend → Mercure (do UI)
+
+Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z głównych topiców MQTT w systemie. Każdy topic ma przykład wiadomości z minimalnie wymaganymi polami:
+
+### `move/web` (Web App → Backend)
+
+```json
+### `move/web` (Web App → Backend)
+
+```json
+{
+    "from": "e2",
+    "to": "e4",
+    "physical": false
+}
 ```
 
+### `move/player` (RPi → Backend)
+
+```json
+{
+    "from": "g1",
+    "to": "f3",
+    "physical": true
+}
+```
+
+### `move/engine` (Backend → Silnik szachowy)
+
+```json
+{
+    "from": "e2",
+    "to": "e4",
+    "current_fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "type": "move_validation",
+    "physical": false
+}
+```
+
+### `move/ai` (Silnik szachowy → Backend)
+
+```json
+{
+    "from": "e7",
+    "to": "e5",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+}
+```
+
+### `move/raspi` (Backend → Raspberry Pi)
+
+```json
+{
+    "from": "e2",
+    "to": "e4"
+}
+```
+
+### `move/raspi/rejected` (Backend → Raspberry Pi)
+
+```json
+{
+    "from": "e2",
+    "reason": "Illegal move: pawn cannot move two squares from e2 to e5",
+    "action": "revert_move"
+}
+```
+
+### `engine/move/confirmed` (Silnik szachowy → Backend)
+
+```json
+{
+    "from": "e2",
+    "to": "e4",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+    "physical": false
+}
+```
+
+### `engine/move/rejected` (Silnik szachowy → Backend)
+
+```json
+{
+    "from": "e2",
+    "to": "e5",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "physical": true,
+    "reason": "Illegal move: pawn cannot move two squares from e2 to e5"
+}
+```
+
+### `engine/possible_moves/request` (Backend → Silnik szachowy)
+
+```json
+{
+    "position": "e2",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+}
+```
+
+### `engine/possible_moves/response` (Silnik szachowy → Backend)
+
+```json
+{
+    "position": "e2",
+    "moves": ["e3", "e4"]
+}
+```
+
+### `status/raspi` (RPi → Backend)
+
+```json
+{
+    "status": "ready"
+}
+```
+
+### `status/engine` (Silnik szachowy → Backend)
+
+```json
+{
+    "status": "thinking"
+}
+```
+
+### `control/restart` (Backend → RPi/Silnik)
+
+```json
+null
+```
+
+### `state/update` (Backend → Web App)
+
+```json
+{
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+    "moves": ["e2e4", "e7e5"],
+    "turn": "white"
+}
+```
+
+### `log/update` (Backend → Web App)
+
+```json
+{
+    "moves": ["e2e4", "e7e5"]
+}
+```
 ## 🎯 Walidacja i synchronizacja:
 
 ### Zasady walidacji:
@@ -473,13 +616,9 @@ Jeśli chcesz szybko uruchomić cały system bez lokalnej instalacji PHP i zale�
 
 3. **Uruchom kontenery:**
 
-> [!WARNING]
-> W dalszej części instrukcji jest stosowana tylko instrukcja Linux/mac - pamiętaj o uruchamianiu odpowiednich komend
-
-
     ```bash
     # Windows
-    docker compose up --build -d
+    docker-compose up --build -d
 
     # Linux/Mac
     docker compose up --build -d
