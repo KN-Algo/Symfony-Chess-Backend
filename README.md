@@ -261,7 +261,6 @@ Backend → state/update + log/update + Mercure
 
 ## 📦 Przykładowe wiadomości MQTT na kanałach
 
-
 Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z głównych topiców MQTT w systemie. Każdy topic ma przykład wiadomości z minimalnie wymaganymi polami:
 
 ### `move/web` (Web App → Backend)
@@ -312,6 +311,7 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 {
     "from": "e2",
     "to": "e4"
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
 }
 ```
 
@@ -322,6 +322,7 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
     "from": "e2",
     "reason": "Illegal move: pawn cannot move two squares from e2 to e5",
     "action": "revert_move"
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 }
 ```
 
@@ -385,7 +386,9 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 ### `control/restart` (Backend → RPi/Silnik)
 
 ```json
-null
+{
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+}
 ```
 
 ### `state/update` (Backend → Web App)
@@ -405,6 +408,7 @@ null
     "moves": ["e2e4", "e7e5"]
 }
 ```
+
 ## 🎯 Walidacja i synchronizacja:
 
 ### Zasady walidacji:
@@ -421,12 +425,6 @@ null
 | ------------ | --------- | ------------------------- | ---------------------------- |
 | **Webowy**   | ✅        | Wyślij `move/raspi`       | Powiadom UI o błędzie        |
 | **Fizyczny** | ✅        | Nic (pionek już tam jest) | Wyślij `move/raspi/rejected` |
-
-### Nowe kanały MQTT (na dzień 06.08.2025):
-
--   `move/raspi/rejected` - Backend → RPi (cofnij nielegalny ruch fizyczny)
--   `engine/move/confirmed` - Silnik → Backend (z flagą `physical`)
--   `engine/move/rejected` - Silnik → Backend (z flagą `physical`)
 
 ## 📨 Mercure Real-time Messages:
 

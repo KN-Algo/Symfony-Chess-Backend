@@ -131,42 +131,46 @@ eventSource.onerror = function(event) {
 }
 ```
 
+
 #### 2. Ruch oczekujący na walidację
 ```json
 {
-  "type": "move_pending",
-  "move": {"from": "e2", "to": "e4"},
-  "physical": false,
-  "state": {
-    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-    "turn": "black",
-    "moves": [{"from": "e2", "to": "e4"}]
-  }
+    "type": "move_pending",
+    "move": {"from": "e2", "to": "e4"},
+    "physical": false,
+    "state": {
+        "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+        "turn": "black",
+        "moves": [{"from": "e2", "to": "e4"}]
+    },
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
 }
 ```
 
 #### 3. Ruch potwierdzony przez silnik
 ```json
 {
-  "type": "move_confirmed",
-  "move": {"from": "e2", "to": "e4"},
-  "physical": false,
-  "state": {
-    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
-    "turn": "black",
-    "moves": [{"from": "e2", "to": "e4"}]
-  }
+    "type": "move_confirmed",
+    "move": {"from": "e2", "to": "e4"},
+    "physical": false,
+    "state": {
+        "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+        "turn": "black",
+        "moves": [{"from": "e2", "to": "e4"}]
+    },
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
 }
 ```
 
 #### 4. Ruch odrzucony przez silnik
 ```json
 {
-  "type": "move_rejected",
-  "move": {"from": "e2", "to": "e5"},
-  "reason": "Illegal move: pawn cannot move two squares from e2 to e5",
-  "physical": false,
-  "state": {...}
+    "type": "move_rejected",
+    "move": {"from": "e2", "to": "e5"},
+    "reason": "Illegal move: pawn cannot move two squares from e2 to e5",
+    "physical": false,
+    "state": {...},
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 }
 ```
 
@@ -204,12 +208,13 @@ eventSource.onerror = function(event) {
 #### 7. Reset gry
 ```json
 {
-  "type": "game_reset",
-  "state": {
-    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    "moves": [],
-    "turn": "white"
-  }
+    "type": "game_reset",
+    "state": {
+        "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+        "moves": [],
+        "turn": "white"
+    },
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
 }
 ```
 

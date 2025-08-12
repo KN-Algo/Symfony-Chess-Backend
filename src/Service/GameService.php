@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 /**
@@ -83,8 +84,13 @@ class GameService
         // 1) Potwierdź ruch AI w stanie gry
         $this->state->confirmMove($from, $to, $newFen, $nextPlayer);
 
-        // 2) Powiadom RasPi o ruchu AI
-        $this->mqtt->publish('move/raspi', compact('from','to'));
+        // 2) Powiadom RasPi o ruchu AI (z FEN)
+        $fen = $this->state->getState()['fen'];
+        $this->mqtt->publish('move/raspi', [
+            'from' => $from,
+            'to' => $to,
+            'fen' => $fen
+        ]);
 
         // 3) Publikacja pełnego stanu i logu ruchów
         $state = $this->state->getState();
@@ -114,9 +120,14 @@ class GameService
         // 1) Potwierdź ruch w stanie gry
         $this->state->confirmMove($from, $to, $newFen, $nextPlayer);
 
-        // 2) Jeśli ruch z UI (nie fizyczny), teraz można powiadomić RPi o wykonaniu
+        // 2) Jeśli ruch z UI (nie fizyczny), teraz można powiadomić RPi o wykonaniu (z FEN)
         if (!$physical) {
-            $this->mqtt->publish('move/raspi', compact('from','to'));
+            $fen = $this->state->getState()['fen'];
+            $this->mqtt->publish('move/raspi', [
+                'from' => $from,
+                'to' => $to,
+                'fen' => $fen
+            ]);
         }
 
         // 3) Publikacja pełnego stanu i logu ruchów
@@ -147,13 +158,15 @@ class GameService
         // 1) Odrzuć ruch w stanie gry
         $this->state->rejectMove($from, $to, $reason);
 
-        // 2) Jeśli ruch był fizyczny, powiadom RPI o konieczności cofnięcia ruchu
+        // 2) Jeśli ruch był fizyczny, powiadom RPI o konieczności cofnięcia ruchu (z FEN)
         if ($physical) {
+            $fen = $this->state->getState()['fen'];
             $this->mqtt->publish('move/raspi/rejected', [
                 'from' => $from,
                 'to' => $to,
                 'reason' => $reason,
-                'action' => 'revert_move' // RPI powinno przywrócić pionek na $from
+                'action' => 'revert_move', // RPI powinno przywrócić pionek na $from
+                'fen' => $fen
             ]);
         }
 
@@ -182,8 +195,11 @@ class GameService
         // 1) Reset stanu
         $this->state->reset();
 
-        // 2) Sygnał restartu do RasPi i silnika
-        $this->mqtt->publish('control/restart', null);
+        // 2) Sygnał restartu do RasPi i silnika (z FEN)
+        $fen = $this->state->getState()['fen'];
+        $this->mqtt->publish('control/restart', [
+            'fen' => $fen
+        ]);
 
         // 3) Publikacja pełnego, zresetowanego stanu i czystego logu
         $state = $this->state->getState();
