@@ -30,14 +30,10 @@
 :3000 {
     import cors
     
-    # Bind na wszystkie interfejsy
-    bind 0.0.0.0
-    
     mercure {
         # Publisher JWT key - używany przez backend do publikowania
         publisher_jwt {env.MERCURE_PUBLISHER_JWT_KEY}
         
-        # Subscriber JWT key - dla subskrypcji (opcjonalne)
         subscriber_jwt {env.MERCURE_SUBSCRIBER_JWT_KEY}
         
         # CORS settings dla Mercure
