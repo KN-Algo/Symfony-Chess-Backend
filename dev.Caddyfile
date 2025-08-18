@@ -1,41 +1,68 @@
+{
+    # Global options
+    auto_https off
+    local_certs
+}
+
+# CORS middleware definition
 (cors) {
-	@cors_preflight method OPTIONS
+    @cors_preflight method OPTIONS
+    @cors_request header Origin *
 
-	header {
-		Access-Control-Allow-Origin "{header.origin}"
-		Vary Origin
-		Access-Control-Expose-Headers "Authorization"
-		Access-Control-Allow-Credentials "true"
-	}
+    header {
+        Access-Control-Allow-Origin "*"
+        Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE, OPTIONS"
+        Access-Control-Allow-Headers "Content-Type, Authorization, X-Requested-With, Accept, Origin"
+        Access-Control-Expose-Headers "Authorization, Link"
+        Access-Control-Allow-Credentials "false"
+        Vary "Origin, Access-Control-Request-Method, Access-Control-Request-Headers"
+    }
 
-	handle @cors_preflight {
-		header {
-			Access-Control-Allow-Methods "GET, POST, PUT, PATCH, DELETE"
-			Access-Control-Max-Age "3600"
-		}
-		respond "" 204
-	}
+    handle @cors_preflight {
+        header {
+            Access-Control-Max-Age "86400"
+        }
+        respond "" 204
+    }
 }
 
-:80 {
-  import cors {header.origin}
-}
-
-:8000 {
-    import cors {header.origin}
-}
-
-http://localhost:3000 {
-    encode zstd gzip
+# Mercure Hub na porcie 3000 - dostępny z localhost
+:3000 {
+    import cors
+    
+    # Bind na wszystkie interfejsy
+    bind 0.0.0.0
+    
     mercure {
+        # Publisher JWT key - używany przez backend do publikowania
         publisher_jwt {env.MERCURE_PUBLISHER_JWT_KEY}
+        
+        # Subscriber JWT key - dla subskrypcji (opcjonalne)
         subscriber_jwt {env.MERCURE_SUBSCRIBER_JWT_KEY}
-        cors_origins *
-        publish_origins *
-        demo
+        
+        # CORS settings dla Mercure
+        cors_origins "*"
+        publish_origins "*"
+        
+        # Anonymous subscriptions (ważne dla webapps bez autoryzacji)
         anonymous
+        
+        # Włącz demo UI
+        demo
+        
+        # Włącz subscriptions
         subscriptions
     }
-    redir / /.well-known/mercure/ui/
+    
+    # Health endpoint
     respond /healthz 200
+    
+    # Redirect root to Mercure UI
+    redir / /.well-known/mercure/ui/
+}
+
+# Optional: Backend proxy (jeśli potrzebny)
+:8001 {
+    import cors
+    reverse_proxy backend:8000
 }

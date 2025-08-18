@@ -78,13 +78,17 @@ services:
     environment:
       MERCURE_PUBLISHER_JWT_KEY: "00a563e20f5b32ce9e85fc801396be97"
       MERCURE_SUBSCRIBER_JWT_KEY: "token_jwt"
-    command: /usr/bin/caddy run --config /etc/caddy/dev.Caddyfile
+    # WAŻNE: Dodajemy bindowanie na wszystkie interfejsy
+    command: /usr/bin/caddy run --config /etc/caddy/dev.Caddyfile --adapter caddyfile
     networks:
       - chess-network
     ports:
-      - 3000:3000
+      - "3000:3000"
     depends_on:
       - mosquitto
+    # Dodajemy dodatkowe mapowanie portów dla CORS
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
 volumes:
   # Wolumen współdzielony dla /app/var (SQLite i logi)
