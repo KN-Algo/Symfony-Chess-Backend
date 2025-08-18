@@ -151,6 +151,7 @@ class HealthCheckService
             $statusCode = $response->getStatusCode();
             $responseTime = round((microtime(true) - $startTime) * 1000, 2);
 
+            // Dla Mercure, używamy endpoint /healthz który zwraca czyste HTTP 200
             if ($statusCode >= 200 && $statusCode < 400) {
                 $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
                 $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD

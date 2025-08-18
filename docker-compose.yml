@@ -77,7 +77,7 @@ services:
       - ./dev.Caddyfile:/etc/caddy/dev.Caddyfile:ro
     environment:
       MERCURE_PUBLISHER_JWT_KEY: "00a563e20f5b32ce9e85fc801396be97"
-      MERCURE_SUBSCRIBER_JWT_KEY: "token_jwt"
+      MERCURE_SUBSCRIBER_JWT_KEY: "00a563e20f5b32ce9e85fc801396be97"
     # WAŻNE: Dodajemy bindowanie na wszystkie interfejsy
     command: /usr/bin/caddy run --config /etc/caddy/dev.Caddyfile --adapter caddyfile
     networks:
