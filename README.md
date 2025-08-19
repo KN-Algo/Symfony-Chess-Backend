@@ -19,6 +19,7 @@ System backendu dla inteligentnej szachownicy opartej na Raspberry Pi z silnikie
 -   [🐳 Docker - Szybki start](#-docker---szybki-start)
 -   [📝 Status implementacji](#-status-implementacji)
 -   [♟️ Przykład pełnej partii](#-przykład-pełnej-partii)
+-   [🏰 Zaawansowane ruchy szachowe](#-zaawansowane-ruchy-szachowe)
 
 ## 🚀 Funkcjonalności
 
@@ -26,7 +27,8 @@ System backendu dla inteligentnej szachownicy opartej na Raspberry Pi z silnikie
 -   **📡 MQTT Broker** - Komunikacja z Raspberry Pi i silnikiem szachowym z pełną walidacją
 -   **⚡ Real-time Mercure** - Powiadomienia na żywo przez Server-Sent Events z bezpośrednią HTTP komunikacją
 -   **🎯 Zarządzanie stanem gry** - Śledzenie ruchów, pozycji i historii partii z walidacją przez silnik
--   **🏥 Health Check** - Monitorowanie stanu wszystkich komponentów systemu
+-   **� Specjalne ruchy szachowe** - Pełne wsparcie dla roszady, promocji pionka, szachu i mata
+-   **��� Health Check** - Monitorowanie stanu wszystkich komponentów systemu
 -   **📝 Logowanie** - Szczegółowe logi komunikacji i błędów
 -   **🔄 Synchronizacja** - Dwukierunkowa komunikacja między UI a fizyczną planszą z walidacją ruchów
 -   **♟️ Możliwe ruchy** - Real-time podpowiedzi ruchów z silnika szachowego
@@ -117,7 +119,7 @@ php bin/console app:mqtt-listen
 
 ### REST API Endpoints
 
--   `POST /move` - Wykonaj ruch (walidowany przez silnik)
+-   `POST /move` - Wykonaj ruch (walidowany przez silnik, obsługuje specjalne ruchy)
 -   `POST /restart` - Zresetuj grę
 -   `POST /possible-moves` - Żądaj możliwych ruchów dla pozycji
 -   `GET /test-mercure` - Test endpointu Mercure
@@ -126,10 +128,38 @@ php bin/console app:mqtt-listen
 
 ### Przykład wykonania ruchu
 
+**Standardowy ruch:**
+
 ```bash
 curl -X POST http://localhost:8000/move \
   -H "Content-Type: application/json" \
   -d '{"from": "e2", "to": "e4"}'
+```
+
+**Roszada krótka:**
+
+```bash
+curl -X POST http://localhost:8000/move \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "e1",
+    "to": "g1",
+    "special_move": "castling_kingside"
+  }'
+```
+
+**Promocja pionka:**
+
+```bash
+curl -X POST http://localhost:8000/move \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "e7",
+    "to": "e8",
+    "special_move": "promotion",
+    "promotion_piece": "queen",
+    "available_pieces": ["queen", "rook", "bishop", "knight"]
+  }'
 ```
 
 ### Przykład żądania możliwych ruchów
@@ -266,10 +296,36 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 
 ### `move/web` (Web App → Backend)
 
+**Standardowy ruch:**
+
 ```json
 {
     "from": "e2",
     "to": "e4",
+    "physical": false
+}
+```
+
+**Roszada krótka:**
+
+```json
+{
+    "from": "e1",
+    "to": "g1",
+    "special_move": "castling_kingside",
+    "physical": false
+}
+```
+
+**Promocja pionka:**
+
+```json
+{
+    "from": "e7",
+    "to": "e8",
+    "special_move": "promotion",
+    "promotion_piece": "queen",
+    "available_pieces": ["queen", "rook", "bishop", "knight"],
     "physical": false
 }
 ```
@@ -298,6 +354,8 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 
 ### `move/ai` (Silnik szachowy → Backend)
 
+**Standardowy ruch AI:**
+
 ```json
 {
     "from": "e7",
@@ -307,13 +365,92 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 }
 ```
 
+**Roszada długa AI:**
+
+```json
+{
+    "from": "e8",
+    "to": "c8",
+    "fen": "r3kbnr/ppppqppp/2n5/2b1p3/2B1P3/5N2/PPPP1PPP/RNBQ1RK1 w kq - 4 4",
+    "next_player": "white",
+    "special_move": "castling_queenside",
+    "additional_moves": [{ "from": "a8", "to": "d8", "piece": "rook" }],
+    "notation": "0-0-0"
+}
+```
+
+**Promocja z szachem:**
+
+```json
+{
+    "from": "e7",
+    "to": "e8",
+    "fen": "rnbqkbnQ/pppp1ppp/8/8/8/8/PPPP1PPP/RNB1KBNR b KQq - 0 4",
+    "next_player": "black",
+    "special_move": "promotion",
+    "promotion_piece": "queen",
+    "notation": "e8=Q+",
+    "gives_check": true
+}
+```
+
 ### `move/raspi` (Backend → Raspberry Pi)
+
+**Standardowy ruch:**
 
 ```json
 {
     "from": "e2",
     "to": "e4",
     "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
+}
+```
+
+**Roszada krótka:**
+
+```json
+{
+    "from": "e1",
+    "to": "g1",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKB1R w Qkq - 1 1",
+    "type": "castling",
+    "subtype": "kingside",
+    "moves": [
+        {
+            "from": "e1",
+            "to": "g1",
+            "piece": "king",
+            "order": 1
+        },
+        {
+            "from": "h1",
+            "to": "f1",
+            "piece": "rook",
+            "order": 2
+        }
+    ],
+    "notation": "0-0"
+}
+```
+
+**Promocja pionka:**
+
+```json
+{
+    "from": "e7",
+    "to": "e8",
+    "fen": "rnbqkbnQ/pppp1ppp/8/8/8/8/PPPP1PPP/RNB1KBNR b KQq - 0 4",
+    "type": "promotion",
+    "piece_removed": "pawn",
+    "piece_placed": "queen",
+    "color": "white",
+    "notation": "e8=Q+",
+    "gives_check": true,
+    "instructions": {
+        "step1": "Usuń białego pionka z e7",
+        "step2": "Umieść białego hetmana na e8",
+        "step3": "Figura daje szach przeciwnemu królowi"
+    }
 }
 ```
 
@@ -339,6 +476,8 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 
 ### `engine/move/confirmed` (Silnik szachowy → Backend)
 
+**Standardowy ruch potwierdzony:**
+
 ```json
 {
     "from": "e2",
@@ -346,6 +485,53 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
     "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
     "next_player": "black",
     "physical": false
+}
+```
+
+**Roszada potwierdzona:**
+
+```json
+{
+    "from": "e1",
+    "to": "g1",
+    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKB1R w Qkq - 1 1",
+    "next_player": "black",
+    "physical": false,
+    "special_move": "castling_kingside",
+    "additional_moves": [{ "from": "h1", "to": "f1", "piece": "rook" }],
+    "notation": "0-0"
+}
+```
+
+**Promocja z szachem potwierdzona:**
+
+```json
+{
+    "from": "e7",
+    "to": "e8",
+    "fen": "rnbqkbnQ/pppp1ppp/8/8/8/8/PPPP1PPP/RNB1KBNR b KQq - 0 4",
+    "next_player": "black",
+    "physical": false,
+    "special_move": "promotion",
+    "promotion_piece": "queen",
+    "notation": "e8=Q+",
+    "gives_check": true
+}
+```
+
+**Mat:**
+
+```json
+{
+    "from": "d1",
+    "to": "h5",
+    "fen": "rnb1kbnr/pppp1ppp/8/7Q/4Pp2/8/PPPP2PP/RNB1KBNR b KQkq - 1 3",
+    "next_player": "black",
+    "physical": false,
+    "notation": "Qh5#",
+    "gives_check": true,
+    "game_status": "checkmate",
+    "winner": "white"
 }
 ```
 
@@ -407,9 +593,31 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 
 ```json
 {
-    "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
-    "moves": ["e2e4", "e7e5"],
-    "turn": "white"
+    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+    "moves": [
+        {
+            "from": "e2",
+            "to": "e4",
+            "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+            "player": "white",
+            "timestamp": 1692454800
+        },
+        {
+            "from": "e7",
+            "to": "e5",
+            "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+            "player": "black",
+            "timestamp": 1692454815,
+            "notation": "e5"
+        }
+    ],
+    "turn": "white",
+    "pending_moves": [],
+    "game_status": "playing",
+    "winner": null,
+    "game_ended": false,
+    "in_check": false,
+    "check_player": null
 }
 ```
 
@@ -720,6 +928,58 @@ Wszystkie kontenery są połączone w sieci `chess-network` co umożliwia im wza
 
 **📝 Uwaga:** Więcej szczegółów dotyczących konfiguracji zewnętrznych komponentów znajdziesz w pliku `EXTERNAL_COMPONENTS.md`.
 
+## 📝 Status implementacji
+
+✅ **Zaimplementowane funkcjonalności:**
+
+### Podstawowe funkcje systemu:
+
+-   ✅ REST API dla ruchów i stanu gry
+-   ✅ MQTT komunikacja między komponentami
+-   ✅ Mercure real-time powiadomienia
+-   ✅ Walidacja ruchów przez silnik szachowy
+-   ✅ Zarządzanie stanem gry i historii
+-   ✅ Health check wszystkich komponentów
+-   ✅ Synchronizacja fizycznej planszy z UI
+
+### Specjalne ruchy szachowe:
+
+-   ✅ **Roszada krótka i długa** - pełna obsługa dla obu stron
+-   ✅ **Promocja pionka** - z wyborem figury i walidacją dostępności
+-   ✅ **Szach i mat** - detekcja i powiadomienia w czasie rzeczywistym
+-   ✅ **Koniec gry** - obsługa mata, pata i remisu
+-   ✅ **Notacja szachowa** - standardowa notacja algebraiczna
+-   ✅ **Szczegółowe instrukcje** - dla Raspberry Pi do wykonania złożonych ruchów
+
+### Komunikacja MQTT:
+
+-   ✅ Wszystkie ruchy przechodzą przez walidację silnika
+-   ✅ Obsługa ruchów fizycznych i z UI
+-   ✅ Specjalne payloady dla roszady i promocji
+-   ✅ Dodatkowe ruchy (np. wieża przy roszadzie)
+-   ✅ Status gry i końcowe powiadomienia
+
+### Stan gry:
+
+-   ✅ Śledzenie specjalnych ruchów w historii
+-   ✅ Metadane ruchów (notacja, szach, typ ruchu)
+-   ✅ Status końca gry (checkmate, stalemate, draw)
+-   ✅ Informacje o szachu i graczu w szachu
+-   ✅ Pełna synchronizacja między komponentami
+
+🔄 **W trakcie rozwoju:**
+
+-   🔄 Integracja z rzeczywistym silnikiem szachowym
+-   🔄 Konfiguracja Raspberry Pi do fizycznych ruchów
+-   🔄 Zaawansowane AI przeciwnika
+
+📋 **Planowane funkcjonalności:**
+
+-   📋 Zapisywanie partii do bazy danych
+-   📋 Analiza partii post-game
+-   📋 Multiplayer online
+-   📋 Turnieje i ranking graczy
+
 ## ♟️ Przykład pełnej partii
 
 Szczegółowy przykład komunikacji podczas pełnej partii szachowej (mat szewczyka w 4 ruchach) z wszystkimi komunikatami MQTT, HTTP i Mercure znajdziesz w dokumencie:
@@ -733,3 +993,18 @@ Dokument zawiera:
 -   ⚡ Wiadomości Mercure real-time
 -   🌐 Żądania HTTP z odpowiedziami
 -   📊 Statystyki i podsumowanie komunikacji
+
+## 🏰 Zaawansowane ruchy szachowe
+
+Kompleksowy przykład komunikacji podczas długiej partii demonstrującej specjalne ruchy szachowe: **roszadę** i **promocję pionka**:
+
+**[🏰 ADVANCED_GAME_COMMUNICATION.md](ADVANCED_GAME_COMMUNICATION.md)** - Partia z roszadą i promocją pionka (28 ruchów)
+
+Dokument zawiera:
+
+-   🏰 **Roszada krótka** - dla obu stron z pełną komunikacją MQTT
+-   ♛ **Promocja pionka** - na hetmana z szachem oraz jego zbicie
+-   ⚔️ **Liczne zbicia** - demonstracja handling różnych figur
+-   📡 **Specjalne payloady** - dla złożonych ruchów szachowych
+-   🎯 **28 ruchów** - pełna partia z zaawansowanymi mechanikami
+-   📊 **Statystyki materiału** - śledzenie wszystkich zbić i promocji
