@@ -457,7 +457,7 @@ Topic: engine/possible_moves/response
 ```json
 {
     "position": "d1",
-    "moves": ["d2", "d3", "d4", "d5", "d6", "d7", "e2", "f3", "g4", "h5"]
+    "moves": ["e2", "f3", "g4", "h5"]
 }
 ```
 
