@@ -578,8 +578,6 @@ Topic: engine/possible_moves/response
     "moves": [
         "h4",
         "h3",
-        "h2",
-        "h1",
         "g5",
         "f5",
         "e5",
