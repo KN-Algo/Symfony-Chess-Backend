@@ -18,6 +18,7 @@ System backendu dla inteligentnej szachownicy opartej na Raspberry Pi z silnikie
 -   [🔐 Mercure Konfiguracja](#-mercure-konfiguracja)
 -   [🐳 Docker - Szybki start](#-docker---szybki-start)
 -   [📝 Status implementacji](#-status-implementacji)
+-   [♟️ Przykład pełnej partii](#-przykład-pełnej-partii)
 
 ## 🚀 Funkcjonalności
 
@@ -301,7 +302,8 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 {
     "from": "e7",
     "to": "e5",
-    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2",
+    "next_player": "white"
 }
 ```
 
@@ -310,8 +312,8 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 ```json
 {
     "from": "e2",
-    "to": "e4"
-    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1"
+    "to": "e4",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1"
 }
 ```
 
@@ -320,9 +322,18 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 ```json
 {
     "from": "e2",
+    "to": "e5",
     "reason": "Illegal move: pawn cannot move two squares from e2 to e5",
-    "action": "revert_move"
+    "action": "revert_move",
     "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+}
+```
+
+### `move/possible_moves/request` (Web App → Backend)
+
+```json
+{
+    "position": "e2"
 }
 ```
 
@@ -332,7 +343,8 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 {
     "from": "e2",
     "to": "e4",
-    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1",
+    "fen": "rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq e3 0 1",
+    "next_player": "black",
     "physical": false
 }
 ```
@@ -707,3 +719,17 @@ Wszystkie kontenery są połączone w sieci `chess-network` co umożliwia im wza
 ---
 
 **📝 Uwaga:** Więcej szczegółów dotyczących konfiguracji zewnętrznych komponentów znajdziesz w pliku `EXTERNAL_COMPONENTS.md`.
+
+## ♟️ Przykład pełnej partii
+
+Szczegółowy przykład komunikacji podczas pełnej partii szachowej (mat szewczyka w 4 ruchach) z wszystkimi komunikatami MQTT, HTTP i Mercure znajdziesz w dokumencie:
+
+**[📋 SAMPLE_GAME_COMMUNICATION.md](SAMPLE_GAME_COMMUNICATION.md)** - Krok po kroku: mat szewczyka z pełną komunikacją systemu
+
+Dokument zawiera:
+
+-   🎯 Każdy ruch z szczegółową komunikacją
+-   📡 Wszystkie payloady MQTT w poprawnym formacie
+-   ⚡ Wiadomości Mercure real-time
+-   🌐 Żądania HTTP z odpowiedziami
+-   📊 Statystyki i podsumowanie komunikacji
