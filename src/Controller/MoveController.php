@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Controller;
 
 use App\Service\GameService;
@@ -55,28 +56,57 @@ class MoveController extends AbstractController
     public function move(Request $req): Response
     {
         $content = $req->getContent();
-        
+
         if (empty($content)) {
             return $this->json(['error' => 'Empty request body'], 400);
         }
-        
+
         $data = json_decode($content, true);
-        
+
         if (json_last_error() !== JSON_ERROR_NONE) {
             return $this->json(['error' => 'Invalid JSON: ' . json_last_error_msg()], 400);
         }
-        
+
         if (!isset($data['from']) || !isset($data['to'])) {
             return $this->json(['error' => 'Missing from/to fields'], 400);
         }
-        
+
+        // Obsługa specjalnych ruchów szachowych
+        $specialMove = $data['special_move'] ?? null;
+        $promotionPiece = $data['promotion_piece'] ?? null;
+        $availablePieces = $data['available_pieces'] ?? null;
+
+        // Walidacja promocji pionka
+        if ($specialMove === 'promotion' && !$promotionPiece) {
+            return $this->json(['error' => 'Promotion piece required for promotion move'], 400);
+        }
+
+        // Walidacja dostępnych figur do promocji
+        if ($promotionPiece && $availablePieces && !in_array($promotionPiece, $availablePieces)) {
+            return $this->json(['error' => 'Invalid promotion piece'], 400);
+        }
+
         try {
             // Opublikuj ruch z UI na MQTT - MqttListenCommand go przetworzy
-            $this->mqtt->publish('move/web', [
+            $moveData = [
                 'from' => $data['from'],
-                'to' => $data['to']
-            ]);
-            
+                'to' => $data['to'],
+                'physical' => false
+            ];
+
+            // Dodaj specjalne dane jeśli istnieją
+            if ($specialMove) {
+                $moveData['special_move'] = $specialMove;
+            }
+            if ($promotionPiece) {
+                $moveData['promotion_piece'] = $promotionPiece;
+            }
+            if ($availablePieces) {
+                $moveData['available_pieces'] = $availablePieces;
+            }
+
+            $this->mqtt->publish('move/web', $moveData);
+
             return $this->json(['status' => 'ok']);
         } catch (\Exception $e) {
             return $this->json(['error' => $e->getMessage()], 500);

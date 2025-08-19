@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Service;
 
 /**
@@ -17,15 +18,30 @@ class StateStorage
 {
     /** @var string Aktualny stan planszy w notacji FEN (aktualizowany przez silnik) */
     private string $fen;
-    
-    /** @var array<array{from: string, to: string}> Historia wszystkich potwierdzonych ruchów */
+
+    /** @var array Historia wszystkich potwierdzonych ruchów */
     private array $moves;
-    
-    /** @var array<array{from: string, to: string}> Ruchy oczekujące na potwierdzenie przez silnik */
+
+    /** @var array Ruchy oczekujące na potwierdzenie przez silnik */
     private array $pendingMoves;
-    
+
     /** @var string Aktualny gracz ('white' lub 'black') */
     private string $currentPlayer;
+
+    /** @var string|null Status gry ('playing', 'checkmate', 'stalemate', 'draw') */
+    private ?string $gameStatus = null;
+
+    /** @var string|null Zwycięzca gry ('white', 'black', lub null) */
+    private ?string $winner = null;
+
+    /** @var bool Czy gra się zakończyła */
+    private bool $gameEnded = false;
+
+    /** @var bool Czy obecny gracz jest w szachu */
+    private bool $inCheck = false;
+
+    /** @var string|null Gracz który jest w szachu */
+    private ?string $checkPlayer = null;
 
     /**
      * Konstruktor magazynu stanu.
@@ -44,7 +60,7 @@ class StateStorage
      * Zwraca kompletny stan gry zawierający pozycje figur oraz pełną historię ruchów.
      * FEN jest aktualizowany tylko po potwierdzeniu przez silnik szachowy.
      * 
-     * @return array{fen: string, moves: array<array{from: string, to: string}>, turn: string, pending_moves: array<array{from: string, to: string}>} Aktualny stan gry
+     * @return array Aktualny stan gry
      */
     public function getState(): array
     {
@@ -53,6 +69,11 @@ class StateStorage
             'moves' => $this->moves,
             'turn' => $this->currentPlayer,
             'pending_moves' => $this->pendingMoves,
+            'game_status' => $this->gameStatus,
+            'winner' => $this->winner,
+            'game_ended' => $this->gameEnded,
+            'in_check' => $this->inCheck,
+            'check_player' => $this->checkPlayer
         ];
     }
 
@@ -64,11 +85,18 @@ class StateStorage
      * 
      * @param string $from Pole źródłowe w notacji szachowej (np. "e2")
      * @param string $to Pole docelowe w notacji szachowej (np. "e4")
+     * @param array|null $metadata Dodatkowe metadane ruchu
      * @return void
      */
-    public function addPendingMove(string $from, string $to): void
+    public function addPendingMove(string $from, string $to, ?array $metadata = null): void
     {
-        $this->pendingMoves[] = ['from' => $from, 'to' => $to];
+        $moveData = ['from' => $from, 'to' => $to];
+
+        if ($metadata) {
+            $moveData = array_merge($moveData, $metadata);
+        }
+
+        $this->pendingMoves[] = $moveData;
     }
 
     /**
@@ -81,23 +109,77 @@ class StateStorage
      * @param string $to Pole docelowe ruchu  
      * @param string $newFen Nowy stan planszy w notacji FEN od silnika
      * @param string $nextPlayer Następny gracz ('white' lub 'black')
+     * @param array|null $metadata Dodatkowe metadane ruchu
      * @return void
      */
-    public function confirmMove(string $from, string $to, string $newFen, string $nextPlayer): void
+    public function confirmMove(string $from, string $to, string $newFen, string $nextPlayer, ?array $metadata = null): void
     {
-        // Dodaj ruch do potwierdzonej historii
-        $this->moves[] = ['from' => $from, 'to' => $to];
-        
+        // Znajdź ruch oczekujący
+        $pendingMove = null;
+        foreach ($this->pendingMoves as $index => $move) {
+            if ($move['from'] === $from && $move['to'] === $to) {
+                $pendingMove = $move;
+                array_splice($this->pendingMoves, $index, 1);
+                break;
+            }
+        }
+
+        // Przygotuj dane ruchu
+        $moveData = [
+            'from' => $from,
+            'to' => $to,
+            'fen' => $newFen,
+            'player' => $this->currentPlayer,
+            'timestamp' => time()
+        ];
+
+        // Dodaj metadane jeśli zostały przekazane
+        if ($metadata) {
+            $moveData = array_merge($moveData, $metadata);
+        }
+
+        // Dodaj informacje z ruchu oczekującego jeśli istnieje
+        if ($pendingMove) {
+            // Zachowaj dane specjalne z ruchu oczekującego
+            if (isset($pendingMove['special_move'])) {
+                $moveData['special_move'] = $pendingMove['special_move'];
+            }
+            if (isset($pendingMove['promotion_piece'])) {
+                $moveData['promotion_piece'] = $pendingMove['promotion_piece'];
+            }
+            if (isset($pendingMove['available_pieces'])) {
+                $moveData['available_pieces'] = $pendingMove['available_pieces'];
+            }
+        }
+
+        // Dodaj do historii ruchów
+        $this->moves[] = $moveData;
+
         // Aktualizuj stan na podstawie odpowiedzi silnika
         $this->fen = $newFen;
         $this->currentPlayer = $nextPlayer;
-        
-        // Usuń ruch z listy oczekujących
-        $this->pendingMoves = array_filter(
-            $this->pendingMoves, 
-            fn($move) => !($move['from'] === $from && $move['to'] === $to)
-        );
-        $this->pendingMoves = array_values($this->pendingMoves); // Reindeksuj
+
+        // Obsługa końca gry
+        if (isset($metadata['game_status'])) {
+            $this->gameStatus = $metadata['game_status'];
+
+            if (isset($metadata['winner'])) {
+                $this->winner = $metadata['winner'];
+            }
+
+            if (in_array($metadata['game_status'], ['checkmate', 'stalemate', 'draw'])) {
+                $this->gameEnded = true;
+            }
+        }
+
+        // Sprawdź czy gracz jest w szachu
+        if (isset($metadata['gives_check']) && $metadata['gives_check']) {
+            $this->inCheck = true;
+            $this->checkPlayer = $nextPlayer;
+        } else {
+            $this->inCheck = false;
+            $this->checkPlayer = null;
+        }
     }
 
     /**
@@ -112,11 +194,11 @@ class StateStorage
     {
         // Usuń ruch z listy oczekujących
         $this->pendingMoves = array_filter(
-            $this->pendingMoves, 
+            $this->pendingMoves,
             fn($move) => !($move['from'] === $from && $move['to'] === $to)
         );
         $this->pendingMoves = array_values($this->pendingMoves); // Reindeksuj
-        
+
         // TODO: Opcjonalnie loguj powód odrzucenia
     }
 
@@ -169,5 +251,10 @@ class StateStorage
         $this->moves = [];
         $this->pendingMoves = [];
         $this->currentPlayer = 'white';
+        $this->gameStatus = 'playing';
+        $this->winner = null;
+        $this->gameEnded = false;
+        $this->inCheck = false;
+        $this->checkPlayer = null;
     }
 }

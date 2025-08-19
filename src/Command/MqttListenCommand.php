@@ -1,4 +1,5 @@
 <?php
+
 namespace App\Command;
 
 use App\Service\MqttService;
@@ -76,16 +77,16 @@ class MqttListenCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
-        
+
         $io->title('MQTT Chess Listener');
         $io->info('Starting MQTT listener for chess game...');
 
         try {
             // Subskrybuj ruchy fizycznej planszy z Raspberry Pi
-            $this->mqtt->subscribe('move/player', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('move/player', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] � <fg=green>Physical move received:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Physical move received', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -98,7 +99,7 @@ class MqttListenCommand extends Command
                         // Ruch fizyczny - backend powiadamia UI i silnik
                         $this->game->playerMove($decoded['from'], $decoded['to'], true);
                         $io->text("    ✅ <fg=green>Physical move processed:</> {$decoded['from']} → {$decoded['to']}");
-                        
+
                         $this->logger?->info('Game: Physical move processed successfully', [
                             'from' => $decoded['from'],
                             'to' => $decoded['to']
@@ -118,10 +119,10 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj ruchy z aplikacji webowej (publikowane przez backend gdy REST API jest wywołane)
-            $this->mqtt->subscribe('move/web', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('move/web', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 🌐 <fg=cyan>Web move received:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Web move received', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -134,7 +135,7 @@ class MqttListenCommand extends Command
                         // Ruch z aplikacji web - backend powiadamia Raspberry Pi i silnik
                         $this->game->playerMove($decoded['from'], $decoded['to'], false);
                         $io->text("    ✅ <fg=green>Web move processed:</> {$decoded['from']} → {$decoded['to']}");
-                        
+
                         $this->logger?->info('Game: Web move processed successfully', [
                             'from' => $decoded['from'],
                             'to' => $decoded['to']
@@ -152,12 +153,12 @@ class MqttListenCommand extends Command
                     $this->logger?->warning('MQTT: Invalid web move format', ['message' => $msg]);
                 }
             });
-            
+
             // Subskrybuj ruchy AI z silnika szachowego
-            $this->mqtt->subscribe('move/ai', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('move/ai', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 🤖 <fg=yellow>AI move received:</> $msg");
-                
+
                 $this->logger?->info('MQTT: AI move received', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -167,19 +168,50 @@ class MqttListenCommand extends Command
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['fen'], $decoded['next_player'])) {
                     try {
+                        // Obsługa dodatkowych parametrów dla specjalnych ruchów AI
+                        $specialMove = $decoded['special_move'] ?? null;
+                        $additionalMoves = $decoded['additional_moves'] ?? null;
+                        $promotionPiece = $decoded['promotion_piece'] ?? null;
+                        $notation = $decoded['notation'] ?? null;
+                        $givesCheck = $decoded['gives_check'] ?? false;
+                        $gameStatus = $decoded['game_status'] ?? null;
+                        $winner = $decoded['winner'] ?? null;
+
                         $this->game->aiMove(
-                            $decoded['from'], 
-                            $decoded['to'], 
-                            $decoded['fen'], 
-                            $decoded['next_player']
+                            $decoded['from'],
+                            $decoded['to'],
+                            $decoded['fen'],
+                            $decoded['next_player'],
+                            $specialMove,
+                            $additionalMoves,
+                            $promotionPiece,
+                            $notation,
+                            $givesCheck,
+                            $gameStatus,
+                            $winner
                         );
-                        $io->text("    ✅ <fg=green>AI move processed:</> {$decoded['from']} → {$decoded['to']}");
-                        
+
+                        $moveDesc = "{$decoded['from']} → {$decoded['to']}";
+                        if ($specialMove) {
+                            $moveDesc .= " ($specialMove)";
+                        }
+                        if ($givesCheck) {
+                            $moveDesc .= " - SZACH!";
+                        }
+                        if ($gameStatus && in_array($gameStatus, ['checkmate', 'stalemate', 'draw'])) {
+                            $moveDesc .= " - KONIEC GRY ($gameStatus)";
+                        }
+
+                        $io->text("    ✅ <fg=green>AI move processed:</> $moveDesc");
+
                         $this->logger?->info('Game: AI move processed successfully', [
                             'from' => $decoded['from'],
                             'to' => $decoded['to'],
                             'fen' => $decoded['fen'],
-                            'next_player' => $decoded['next_player']
+                            'next_player' => $decoded['next_player'],
+                            'special_move' => $specialMove,
+                            'gives_check' => $givesCheck,
+                            'game_status' => $gameStatus
                         ]);
                     } catch (\Exception $e) {
                         $io->error("    ❌ Failed to process AI move: " . $e->getMessage());
@@ -196,10 +228,10 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj potwierdzenia ruchów od silnika
-            $this->mqtt->subscribe('engine/move/confirmed', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('engine/move/confirmed', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] ✅ <fg=green>Move confirmed by engine:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Move confirmed by engine', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -209,19 +241,51 @@ class MqttListenCommand extends Command
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['fen'], $decoded['next_player'])) {
                     try {
+                        // Obsługa dodatkowych parametrów dla specjalnych ruchów
+                        $physical = $decoded['physical'] ?? false;
+                        $specialMove = $decoded['special_move'] ?? null;
+                        $additionalMoves = $decoded['additional_moves'] ?? null;
+                        $promotionPiece = $decoded['promotion_piece'] ?? null;
+                        $notation = $decoded['notation'] ?? null;
+                        $givesCheck = $decoded['gives_check'] ?? false;
+                        $gameStatus = $decoded['game_status'] ?? null;
+                        $winner = $decoded['winner'] ?? null;
+
                         $this->game->confirmMoveFromEngine(
-                            $decoded['from'], 
-                            $decoded['to'], 
-                            $decoded['fen'], 
+                            $decoded['from'],
+                            $decoded['to'],
+                            $decoded['fen'],
                             $decoded['next_player'],
-                            $decoded['physical'] ?? false
+                            $physical,
+                            $specialMove,
+                            $additionalMoves,
+                            $promotionPiece,
+                            $notation,
+                            $givesCheck,
+                            $gameStatus,
+                            $winner
                         );
-                        $io->text("    ✅ <fg=green>Move confirmed:</> {$decoded['from']} → {$decoded['to']}");
-                        
+
+                        $moveDesc = "{$decoded['from']} → {$decoded['to']}";
+                        if ($specialMove) {
+                            $moveDesc .= " ($specialMove)";
+                        }
+                        if ($givesCheck) {
+                            $moveDesc .= " - SZACH!";
+                        }
+                        if ($gameStatus && in_array($gameStatus, ['checkmate', 'stalemate', 'draw'])) {
+                            $moveDesc .= " - KONIEC GRY ($gameStatus)";
+                        }
+
+                        $io->text("    ✅ <fg=green>Move confirmed:</> $moveDesc");
+
                         $this->logger?->info('Game: Move confirmed successfully', [
                             'from' => $decoded['from'],
                             'to' => $decoded['to'],
-                            'fen' => $decoded['fen']
+                            'fen' => $decoded['fen'],
+                            'special_move' => $specialMove,
+                            'gives_check' => $givesCheck,
+                            'game_status' => $gameStatus
                         ]);
                     } catch (\Exception $e) {
                         $io->error("    ❌ Failed to confirm move: " . $e->getMessage());
@@ -236,10 +300,10 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj odrzucenia ruchów od silnika
-            $this->mqtt->subscribe('engine/move/rejected', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('engine/move/rejected', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] ❌ <fg=red>Move rejected by engine:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Move rejected by engine', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -250,13 +314,13 @@ class MqttListenCommand extends Command
                 if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['reason'])) {
                     try {
                         $this->game->rejectMoveFromEngine(
-                            $decoded['from'], 
-                            $decoded['to'], 
+                            $decoded['from'],
+                            $decoded['to'],
                             $decoded['reason'],
                             $decoded['physical'] ?? false
                         );
                         $io->text("    ❌ <fg=red>Move rejected:</> {$decoded['from']} → {$decoded['to']} ({$decoded['reason']})");
-                        
+
                         $this->logger?->info('Game: Move rejected successfully', [
                             'from' => $decoded['from'],
                             'to' => $decoded['to'],
@@ -275,30 +339,30 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj aktualizacje statusu Raspberry Pi
-            $this->mqtt->subscribe('status/raspi', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('status/raspi', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 📡 <fg=blue>RasPi status:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Raspberry Pi status received', [
                     'topic' => $topic,
                     'message' => $msg,
                     'timestamp' => $timestamp
                 ]);
-                
+
                 // Przekaż status do UI przez WebSocket/Mercure
                 try {
                     $processedStatus = $this->processStatusForUI($msg, 'raspberry_pi');
-                    
+
                     $this->notifier->broadcast([
                         'type' => 'raspi_status',
                         'data' => $processedStatus,
                         'timestamp' => $timestamp
                     ]);
-                    
-                    $statusDisplay = $processedStatus['format'] === 'json' 
-                        ? json_encode($processedStatus['status']) 
+
+                    $statusDisplay = $processedStatus['format'] === 'json'
+                        ? json_encode($processedStatus['status'])
                         : $processedStatus['message'] ?? $msg;
-                        
+
                     $io->text("    ✅ <fg=green>Status forwarded to UI:</> {$statusDisplay}");
                     $this->logger?->debug('MQTT: Raspberry Pi status forwarded to UI', ['processed_status' => $processedStatus]);
                 } catch (\Exception $e) {
@@ -311,30 +375,30 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj aktualizacje statusu silnika szachowego
-            $this->mqtt->subscribe('status/engine', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('status/engine', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 🧠 <fg=magenta>Engine status:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Chess engine status received', [
                     'topic' => $topic,
                     'message' => $msg,
                     'timestamp' => $timestamp
                 ]);
-                
+
                 // Przekaż status do UI przez WebSocket/Mercure
                 try {
                     $processedStatus = $this->processStatusForUI($msg, 'chess_engine');
-                    
+
                     $this->notifier->broadcast([
                         'type' => 'engine_status',
                         'data' => $processedStatus,
                         'timestamp' => $timestamp
                     ]);
-                    
-                    $statusDisplay = $processedStatus['format'] === 'json' 
-                        ? json_encode($processedStatus['status']) 
+
+                    $statusDisplay = $processedStatus['format'] === 'json'
+                        ? json_encode($processedStatus['status'])
                         : $processedStatus['message'] ?? $msg;
-                        
+
                     $io->text("    ✅ <fg=green>Status forwarded to UI:</> {$statusDisplay}");
                     $this->logger?->debug('MQTT: Chess engine status forwarded to UI', ['processed_status' => $processedStatus]);
                 } catch (\Exception $e) {
@@ -347,10 +411,10 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj wiadomości kontroli restartu
-            $this->mqtt->subscribe('control/restart', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('control/restart', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 🔄 <fg=red>Restart control received:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Restart control received', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -360,7 +424,7 @@ class MqttListenCommand extends Command
                 try {
                     $this->game->resetGame();
                     $io->text("    ✅ <fg=green>Game reset completed</>");
-                    
+
                     $this->logger?->info('Game: Reset completed successfully');
                 } catch (\Exception $e) {
                     $io->error("    ❌ Failed to reset game: " . $e->getMessage());
@@ -371,10 +435,10 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj żądania możliwych ruchów z aplikacji webowej
-            $this->mqtt->subscribe('move/possible_moves/request', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('move/possible_moves/request', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 🔍 <fg=cyan>Possible moves request:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Possible moves request received', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -388,9 +452,9 @@ class MqttListenCommand extends Command
                         $this->mqtt->publish('engine/possible_moves/request', [
                             'position' => $decoded['position']
                         ]);
-                        
+
                         $io->text("    ✅ <fg=green>Request forwarded to engine:</> {$decoded['position']}");
-                        
+
                         $this->logger?->info('MQTT: Possible moves request forwarded to engine', [
                             'position' => $decoded['position']
                         ]);
@@ -410,10 +474,10 @@ class MqttListenCommand extends Command
             });
 
             // Subskrybuj odpowiedzi możliwych ruchów od silnika szachowego
-            $this->mqtt->subscribe('engine/possible_moves/response', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('engine/possible_moves/response', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 📋 <fg=cyan>Possible moves response from engine:</> $msg");
-                
+
                 $this->logger?->info('MQTT: Possible moves response received from engine', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -429,16 +493,16 @@ class MqttListenCommand extends Command
                             'position' => $decoded['position'],
                             'moves' => $decoded['moves']
                         ];
-                        
+
                         $io->text("    🔄 <fg=yellow>Broadcasting to UI:</> " . json_encode($broadcastData));
                         $this->logger?->info('MQTT: Broadcasting possible moves to UI', $broadcastData);
-                        
+
                         // Przekaż odpowiedź do aplikacji webowej przez WebSocket
                         $this->notifier->broadcast($broadcastData);
-                        
+
                         $movesCount = count($decoded['moves']);
                         $io->text("    ✅ <fg=green>Response sent to webapp:</> {$decoded['position']} → $movesCount moves");
-                        
+
                         $this->logger?->info('MQTT: Possible moves response sent to webapp', [
                             'position' => $decoded['position'],
                             'moves_count' => $movesCount,
@@ -460,10 +524,10 @@ class MqttListenCommand extends Command
             });
 
             // Dodatkowa subscription na wszystkie move topiki dla debugging
-            $this->mqtt->subscribe('move/+', function($topic, $msg) use ($io) {
+            $this->mqtt->subscribe('move/+', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 📨 <fg=magenta>DEBUG - Any move on {$topic}:</> $msg");
-                
+
                 $this->logger?->debug('MQTT: Debug - any move received', [
                     'topic' => $topic,
                     'message' => $msg,
@@ -474,41 +538,40 @@ class MqttListenCommand extends Command
             $io->success('MQTT subscriptions established');
             $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, control/restart, move/possible_moves/request, engine/possible_moves/response, move/+');
             $io->comment('Listening for moves and status updates... Press Ctrl+C to stop');
-            
+
             $this->logger?->info('MQTT Listener started successfully');
-            
+
             $loopCount = 0;
-            
+
             // Główna pętla z lepszą obsługą błędów
             while (true) {
                 try {
                     $this->mqtt->loop();
                     $loopCount++;
-                    
+
                     // Loguj sygnał życia co 1000 iteracji (mniej więcej co ~1.7 minuty)
                     if ($loopCount % 1000 === 0) {
                         $io->text("[" . date('H:i:s') . "] 💓 <fg=blue>Heartbeat - Loop #$loopCount</>");
                         $this->logger?->debug('MQTT: Heartbeat', ['loop_count' => $loopCount]);
                     }
-                    
+
                     usleep(100000); // 100ms opóźnienie
-                    
+
                 } catch (\Exception $e) {
                     $io->error("MQTT loop error: " . $e->getMessage());
                     $this->logger?->error('MQTT: Loop error', [
                         'error' => $e->getMessage(),
                         'loop_count' => $loopCount
                     ]);
-                    
+
                     // Poczekaj przed ponowną próbą
                     $io->comment('Waiting 5 seconds before retry...');
                     sleep(5);
-                    
+
                     // Spróbuj się połączyć ponownie lub przerwij po zbyt wielu błędach
                     throw $e;
                 }
             }
-            
         } catch (\Exception $e) {
             $io->error('MQTT Listener failed: ' . $e->getMessage());
             $this->logger?->critical('MQTT Listener crashed', [
@@ -535,7 +598,7 @@ class MqttListenCommand extends Command
     {
         // Spróbuj zdekodować jako JSON
         $statusData = json_decode($rawStatus, true);
-        
+
         if ($statusData && is_array($statusData)) {
             // Status w formacie JSON - zachowaj wszystkie dane
             return [
@@ -544,36 +607,36 @@ class MqttListenCommand extends Command
                 'component' => $component
             ];
         }
-        
+
         // Status w formacie string - zmapuj na standardowe znaczenia
         $processedStatus = [
             'raw' => $rawStatus,
             'format' => 'string',
             'component' => $component
         ];
-        
+
         // Mapowanie statusów według dokumentacji
         switch (strtolower(trim($rawStatus))) {
             case 'ready':
                 $processedStatus['state'] = 'ready';
-                $processedStatus['message'] = $component === 'raspberry_pi' 
+                $processedStatus['message'] = $component === 'raspberry_pi'
                     ? 'Raspberry Pi is ready for commands'
                     : 'Chess engine is ready for moves';
                 $processedStatus['severity'] = 'info';
                 break;
-                
+
             case 'moving':
                 $processedStatus['state'] = 'busy';
                 $processedStatus['message'] = 'Raspberry Pi is executing a physical move';
                 $processedStatus['severity'] = 'info';
                 break;
-                
+
             case 'thinking':
                 $processedStatus['state'] = 'busy';
                 $processedStatus['message'] = 'Chess engine is calculating the next move';
                 $processedStatus['severity'] = 'info';
                 break;
-                
+
             case 'error':
                 $processedStatus['state'] = 'error';
                 $processedStatus['message'] = $component === 'raspberry_pi'
@@ -587,13 +650,13 @@ class MqttListenCommand extends Command
                 $processedStatus['message'] = 'Chess engine is analyzing the position';
                 $processedStatus['severity'] = 'info';
                 break;
-                
+
             default:
                 $processedStatus['state'] = 'unknown';
                 $processedStatus['message'] = "Unknown status: {$rawStatus}";
                 $processedStatus['severity'] = 'warning';
         }
-        
+
         return $processedStatus;
     }
 }

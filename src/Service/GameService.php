@@ -39,31 +39,64 @@ class GameService
      * @param string $from Pole źródłowe w notacji szachowej (np. "e2")
      * @param string $to Pole docelowe w notacji szachowej (np. "e4")
      * @param bool $physical Czy ruch został wykonany fizycznie na planszy (true) czy pochodzi z UI (false)
+     * @param string|null $specialMove Typ specjalnego ruchu ("castling_kingside", "castling_queenside", "promotion", itp.)
+     * @param string|null $promotionPiece Figura do promocji ("queen", "rook", "bishop", "knight")
+     * @param array|null $availablePieces Dostępne figury do promocji
      * @return void
      * @throws \Exception W przypadku błędu komunikacji MQTT
      */
-    public function playerMove(string $from, string $to, bool $physical): void
-    {
+    public function playerMove(
+        string $from,
+        string $to,
+        bool $physical,
+        ?string $specialMove = null,
+        ?string $promotionPiece = null,
+        ?array $availablePieces = null
+    ): void {
         // 1) Dodaj ruch jako oczekujący na potwierdzenie
-        $this->state->addPendingMove($from, $to);
+        $this->state->addPendingMove($from, $to, $specialMove, $promotionPiece);
 
-        // 2) Wyślij do silnika w celu walidacji i otrzymania nowego FEN
-        // UWAGA: RPi otrzyma polecenie ruchu dopiero po potwierdzeniu przez silnik
-        $this->mqtt->publish('move/engine', [
+        // 2) Przygotuj dane dla silnika
+        $engineData = [
             'from' => $from,
             'to' => $to,
             'current_fen' => $this->state->getState()['fen'],
             'type' => 'move_validation',
             'physical' => $physical
-        ]);
+        ];
 
-        // 3) Powiadomienie do UI o ruchu oczekującym na potwierdzenie
-        $this->notifier->broadcast([
+        // Dodaj specjalne dane jeśli istnieją
+        if ($specialMove) {
+            $engineData['special_move'] = $specialMove;
+        }
+        if ($promotionPiece) {
+            $engineData['promotion_piece'] = $promotionPiece;
+        }
+        if ($availablePieces) {
+            $engineData['available_pieces'] = $availablePieces;
+        }
+
+        // 3) Wyślij do silnika w celu walidacji i otrzymania nowego FEN
+        // UWAGA: RPi otrzyma polecenie ruchu dopiero po potwierdzeniu przez silnik
+        $this->mqtt->publish('move/engine', $engineData);
+
+        // 4) Powiadomienie do UI o ruchu oczekującym na potwierdzenie
+        $notificationData = [
             'type' => 'move_pending',
             'move' => compact('from', 'to'),
             'physical' => $physical,
             'state' => $this->state->getState()
-        ]);
+        ];
+
+        // Dodaj specjalne dane do powiadomienia
+        if ($specialMove) {
+            $notificationData['move']['special_move'] = $specialMove;
+        }
+        if ($promotionPiece) {
+            $notificationData['move']['promotion_piece'] = $promotionPiece;
+        }
+
+        $this->notifier->broadcast($notificationData);
     }
 
     /**
@@ -76,58 +109,237 @@ class GameService
      * @param string $to Pole docelowe ruchu AI w notacji szachowej
      * @param string $newFen Nowy stan planszy po ruchu AI
      * @param string $nextPlayer Następny gracz po ruchu AI
+     * @param string|null $specialMove Typ specjalnego ruchu AI
+     * @param array|null $additionalMoves Dodatkowe ruchy (np. dla roszady)
+     * @param string|null $promotionPiece Figura do promocji
+     * @param string|null $notation Notacja szachowa ruchu
+     * @param bool $givesCheck Czy ruch daje szach
+     * @param string|null $gameStatus Status gry ("checkmate", "stalemate", itp.)
+     * @param string|null $winner Zwycięzca gry
      * @return void
      * @throws \Exception W przypadku błędu komunikacji MQTT
      */
-    public function aiMove(string $from, string $to, string $newFen, string $nextPlayer): void
-    {
+    public function aiMove(
+        string $from,
+        string $to,
+        string $newFen,
+        string $nextPlayer,
+        ?string $specialMove = null,
+        ?array $additionalMoves = null,
+        ?string $promotionPiece = null,
+        ?string $notation = null,
+        bool $givesCheck = false,
+        ?string $gameStatus = null,
+        ?string $winner = null
+    ): void {
         // 1) Potwierdź ruch AI w stanie gry
-        $this->state->confirmMove($from, $to, $newFen, $nextPlayer);
-
-        // 2) Powiadom RasPi o ruchu AI (z FEN)
-        $fen = $this->state->getState()['fen'];
-        $this->mqtt->publish('move/raspi', [
-            'from' => $from,
-            'to' => $to,
-            'fen' => $fen
+        $this->state->confirmMove($from, $to, $newFen, $nextPlayer, [
+            'special_move' => $specialMove,
+            'additional_moves' => $additionalMoves,
+            'promotion_piece' => $promotionPiece,
+            'notation' => $notation,
+            'gives_check' => $givesCheck,
+            'game_status' => $gameStatus,
+            'winner' => $winner
         ]);
 
-        // 3) Publikacja pełnego stanu i logu ruchów
+        // 2) Przygotuj dane dla Raspberry Pi
+        $raspiData = [
+            'from' => $from,
+            'to' => $to,
+            'fen' => $newFen
+        ];
+
+        // Obsługa specjalnych ruchów dla Raspberry Pi
+        if ($specialMove === 'castling_kingside' || $specialMove === 'castling_queenside') {
+            $raspiData['type'] = 'castling';
+            $raspiData['subtype'] = $specialMove === 'castling_kingside' ? 'kingside' : 'queenside';
+            if ($additionalMoves) {
+                $raspiData['moves'] = [
+                    [
+                        'from' => $from,
+                        'to' => $to,
+                        'piece' => 'king',
+                        'order' => 1
+                    ],
+                    [
+                        'from' => $additionalMoves[0]['from'],
+                        'to' => $additionalMoves[0]['to'],
+                        'piece' => 'rook',
+                        'order' => 2
+                    ]
+                ];
+            }
+            if ($notation) {
+                $raspiData['notation'] = $notation;
+            }
+        } elseif ($specialMove === 'promotion') {
+            $raspiData['type'] = 'promotion';
+            $raspiData['piece_removed'] = 'pawn';
+            $raspiData['piece_placed'] = $promotionPiece ?? 'queen';
+            $raspiData['color'] = $nextPlayer === 'white' ? 'black' : 'white'; // Kolor który wykonał ruch
+            if ($notation) {
+                $raspiData['notation'] = $notation;
+            }
+            if ($givesCheck) {
+                $raspiData['gives_check'] = true;
+            }
+            $raspiData['instructions'] = [
+                'step1' => "Usuń " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " pionka z " . $from,
+                'step2' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
+                'step3' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja zakończona"
+            ];
+        }
+
+        if ($givesCheck) {
+            $raspiData['gives_check'] = true;
+        }
+
+        // 3) Powiadom RasPi o ruchu AI
+        $this->mqtt->publish('move/raspi', $raspiData);
+
+        // 4) Publikacja pełnego stanu i logu ruchów
         $state = $this->state->getState();
         $this->mqtt->publish('state/update', $state);
         $this->mqtt->publish('log/update', ['moves' => $state['moves']]);
 
-        // 4) Powiadomienie do UI o ruchu AI
-        $this->notifier->broadcast([
+        // 5) Przygotuj powiadomienie do UI
+        $notificationData = [
             'type' => 'ai_move_executed',
             'move' => compact('from', 'to'),
             'state' => $state
-        ]);
+        ];
+
+        // Dodaj specjalne dane do powiadomienia
+        if ($specialMove) {
+            $notificationData['move']['special_move'] = $specialMove;
+        }
+        if ($notation) {
+            $notificationData['move']['notation'] = $notation;
+        }
+        if ($promotionPiece) {
+            $notificationData['move']['promotion_piece'] = $promotionPiece;
+        }
+        if ($givesCheck) {
+            $notificationData['move']['gives_check'] = $givesCheck;
+        }
+        if ($additionalMoves) {
+            $notificationData['move']['additional_moves'] = $additionalMoves;
+        }
+
+        // Sprawdź koniec gry
+        if ($gameStatus && in_array($gameStatus, ['checkmate', 'stalemate', 'draw'])) {
+            // Wyślij osobne powiadomienie o końcu gry
+            $this->notifier->broadcast([
+                'type' => 'game_over',
+                'result' => $gameStatus,
+                'winner' => $winner,
+                'final_position' => $newFen,
+                'moves_count' => count($state['moves'])
+            ]);
+        }
+
+        // 6) Powiadomienie do UI o ruchu AI
+        $this->notifier->broadcast($notificationData);
     }
 
     /**
      * Obsługuje potwierdzenie ruchu przez silnik szachowy.
      * 
+     * Metoda wywoływana gdy silnik szachowy potwierdza poprawność ruchu gracza
+     * i przesyła aktualny stan planszy po wykonaniu ruchu.
+     * 
      * @param string $from Pole źródłowe ruchu
      * @param string $to Pole docelowe ruchu
      * @param string $newFen Nowy stan planszy po ruchu
-     * @param string $nextPlayer Następny gracz
+     * @param string $nextPlayer Następny gracz po ruchu
      * @param bool $physical Czy ruch był fizyczny
+     * @param string|null $specialMove Typ specjalnego ruchu
+     * @param array|null $additionalMoves Dodatkowe ruchy (np. dla roszady)
+     * @param string|null $promotionPiece Figura do promocji
+     * @param string|null $notation Notacja szachowa ruchu
+     * @param bool $givesCheck Czy ruch daje szach
+     * @param string|null $gameStatus Status gry ("checkmate", "stalemate", itp.)
+     * @param string|null $winner Zwycięzca gry
      * @return void
+     * @throws \Exception W przypadku błędu komunikacji MQTT
      */
-    public function confirmMoveFromEngine(string $from, string $to, string $newFen, string $nextPlayer, bool $physical = false): void
-    {
+    public function confirmMoveFromEngine(
+        string $from,
+        string $to,
+        string $newFen,
+        string $nextPlayer,
+        bool $physical = false,
+        ?string $specialMove = null,
+        ?array $additionalMoves = null,
+        ?string $promotionPiece = null,
+        ?string $notation = null,
+        bool $givesCheck = false,
+        ?string $gameStatus = null,
+        ?string $winner = null
+    ): void {
         // 1) Potwierdź ruch w stanie gry
-        $this->state->confirmMove($from, $to, $newFen, $nextPlayer);
+        $this->state->confirmMove($from, $to, $newFen, $nextPlayer, [
+            'physical' => $physical,
+            'special_move' => $specialMove,
+            'additional_moves' => $additionalMoves,
+            'promotion_piece' => $promotionPiece,
+            'notation' => $notation,
+            'gives_check' => $givesCheck,
+            'game_status' => $gameStatus,
+            'winner' => $winner
+        ]);
 
-        // 2) Jeśli ruch z UI (nie fizyczny), teraz można powiadomić RPi o wykonaniu (z FEN)
+        // 2) Przygotuj dane dla Raspberry Pi (tylko jeśli ruch nie był fizyczny)
         if (!$physical) {
-            $fen = $this->state->getState()['fen'];
-            $this->mqtt->publish('move/raspi', [
+            $raspiData = [
                 'from' => $from,
                 'to' => $to,
-                'fen' => $fen
-            ]);
+                'fen' => $newFen
+            ];
+
+            // Obsługa specjalnych ruchów dla Raspberry Pi
+            if ($specialMove === 'castling_kingside' || $specialMove === 'castling_queenside') {
+                $raspiData['type'] = 'castling';
+                $raspiData['subtype'] = $specialMove === 'castling_kingside' ? 'kingside' : 'queenside';
+                if ($additionalMoves) {
+                    $raspiData['moves'] = [
+                        [
+                            'from' => $from,
+                            'to' => $to,
+                            'piece' => 'king',
+                            'order' => 1
+                        ],
+                        [
+                            'from' => $additionalMoves[0]['from'],
+                            'to' => $additionalMoves[0]['to'],
+                            'piece' => 'rook',
+                            'order' => 2
+                        ]
+                    ];
+                }
+            } elseif ($specialMove === 'promotion') {
+                $raspiData['type'] = 'promotion';
+                $raspiData['piece_removed'] = 'pawn';
+                $raspiData['piece_placed'] = $promotionPiece ?? 'queen';
+                $raspiData['color'] = $nextPlayer === 'white' ? 'black' : 'white';
+                $raspiData['instructions'] = [
+                    'step1' => "Usuń " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " pionka z " . $from,
+                    'step2' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
+                    'step3' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja zakończona"
+                ];
+            }
+
+            if ($notation) {
+                $raspiData['notation'] = $notation;
+            }
+
+            if ($givesCheck) {
+                $raspiData['gives_check'] = true;
+            }
+
+            // Powiadom RasPi o potwierdzonym ruchu
+            $this->mqtt->publish('move/raspi', $raspiData);
         }
 
         // 3) Publikacja pełnego stanu i logu ruchów
@@ -135,13 +347,48 @@ class GameService
         $this->mqtt->publish('state/update', $state);
         $this->mqtt->publish('log/update', ['moves' => $state['moves']]);
 
-        // 4) Powiadomienie do UI o potwierdzeniu ruchu
-        $this->notifier->broadcast([
+        // 4) Przygotuj powiadomienie do UI
+        $notificationData = [
             'type' => 'move_confirmed',
-            'move' => compact('from', 'to'),
+            'move' => [
+                'from' => $from,
+                'to' => $to
+            ],
             'physical' => $physical,
             'state' => $state
-        ]);
+        ];
+
+        // Dodaj specjalne dane do powiadomienia
+        if ($specialMove) {
+            $notificationData['move']['special_move'] = $specialMove;
+        }
+        if ($notation) {
+            $notificationData['move']['notation'] = $notation;
+        }
+        if ($promotionPiece) {
+            $notificationData['move']['promotion_piece'] = $promotionPiece;
+        }
+        if ($givesCheck) {
+            $notificationData['move']['gives_check'] = $givesCheck;
+        }
+        if ($additionalMoves) {
+            $notificationData['move']['additional_moves'] = $additionalMoves;
+        }
+
+        // Sprawdź koniec gry
+        if ($gameStatus && in_array($gameStatus, ['checkmate', 'stalemate', 'draw'])) {
+            // Wyślij osobne powiadomienie o końcu gry
+            $this->notifier->broadcast([
+                'type' => 'game_over',
+                'result' => $gameStatus,
+                'winner' => $winner,
+                'final_position' => $newFen,
+                'moves_count' => count($state['moves'])
+            ]);
+        }
+
+        // 5) Powiadomienie do UI o potwierdzonym ruchu
+        $this->notifier->broadcast($notificationData);
     }
 
     /**
