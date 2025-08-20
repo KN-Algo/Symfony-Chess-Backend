@@ -32,6 +32,6 @@ services:
         arguments:
             $mqttBroker: "%env(MQTT_BROKER)%"
             $mqttPort: "%env(int:MQTT_PORT)%"
-            $mercureUrl: "http://mercure:3000/healthz"
+            $mercureHealthUrl: "http://mercure:3000/healthz"
             $raspberryUrl: "%env(RASPBERRY_PI_URL)%"
             $chessEngineUrl: "%env(CHESS_ENGINE_URL)%"

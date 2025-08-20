@@ -39,7 +39,7 @@ class HealthCheckService
     /**
      * @param string $mqttBroker Adres brokera MQTT
      * @param int $mqttPort Port brokera MQTT
-     * @param string $mercureUrl URL hubu Mercure
+     * @param string $mercureHealthUrl URL endpoint health check Mercure
      * @param string $raspberryUrl URL endpointu Raspberry Pi
      * @param string $chessEngineUrl URL endpointu silnika szachowego
      * @param LoggerInterface|null $logger Logger do zapisywania błędów (opcjonalny)
@@ -48,7 +48,7 @@ class HealthCheckService
     public function __construct(
         private string $mqttBroker,
         private int $mqttPort,
-        private string $mercureUrl,
+        private string $mercureHealthUrl,
         private string $raspberryUrl,
         private string $chessEngineUrl,
         private ?LoggerInterface $logger = null,
@@ -89,7 +89,7 @@ class HealthCheckService
 
         // Żądania HTTP asynchronicznie
         try {
-            $responses['mercure'] = $this->httpClient->request('GET', $this->mercureUrl, [
+            $responses['mercure'] = $this->httpClient->request('GET', $this->mercureHealthUrl, [
                 'timeout' => self::TIMEOUT
             ]);
         } catch (\Exception $e) {
@@ -141,7 +141,7 @@ class HealthCheckService
             return [
                 'status' => 'unhealthy',
                 'message' => 'Mercure hub connection failed: Request timeout or connection error',
-                'endpoint' => $this->mercureUrl,
+                'endpoint' => $this->mercureHealthUrl,
                 'response_time' => null
             ];
         }
@@ -155,13 +155,13 @@ class HealthCheckService
             if ($statusCode >= 200 && $statusCode < 400) {
                 $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
                 $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
-                    ? "Mercure hub connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                    ? 'Mercure hub connection successful but slow (>' . self::RESPONSE_TIME_WARNING_THRESHOLD . 'ms)'
                     : 'Mercure hub connection successful';
 
                 return [
                     'status' => $status,
                     'message' => $message,
-                    'endpoint' => $this->mercureUrl,
+                    'endpoint' => $this->mercureHealthUrl,
                     'response_time' => $responseTime . 'ms',
                     'status_code' => $statusCode
                 ];
@@ -169,7 +169,7 @@ class HealthCheckService
                 return [
                     'status' => 'unhealthy',
                     'message' => "Mercure hub returned status code: {$statusCode}",
-                    'endpoint' => $this->mercureUrl,
+                    'endpoint' => $this->mercureHealthUrl,
                     'response_time' => $responseTime . 'ms',
                     'status_code' => $statusCode
                 ];
@@ -179,7 +179,7 @@ class HealthCheckService
             return [
                 'status' => 'unhealthy',
                 'message' => 'Mercure hub connection failed: ' . $e->getMessage(),
-                'endpoint' => $this->mercureUrl,
+                'endpoint' => $this->mercureHealthUrl,
                 'response_time' => null
             ];
         }
@@ -205,7 +205,7 @@ class HealthCheckService
             if ($statusCode >= 200 && $statusCode < 400) {
                 $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
                 $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
-                    ? "Raspberry Pi connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                    ? `Raspberry Pi connection successful but slow (>` + self::RESPONSE_TIME_WARNING_THRESHOLD + `ms)`
                     : 'Raspberry Pi connection successful';
 
                 return [
@@ -255,7 +255,7 @@ class HealthCheckService
             if ($statusCode >= 200 && $statusCode < 400) {
                 $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
                 $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
-                    ? "Chess engine connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                    ? `Chess engine connection successful but slow (>` + self::RESPONSE_TIME_WARNING_THRESHOLD + `ms)`
                     : 'Chess engine connection successful';
 
                 return [
@@ -343,7 +343,7 @@ class HealthCheckService
 
             $status = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD ? 'warning' : 'healthy';
             $message = $responseTime > self::RESPONSE_TIME_WARNING_THRESHOLD
-                ? "MQTT broker connection successful but slow (>{self::RESPONSE_TIME_WARNING_THRESHOLD}ms)"
+                ? `MQTT broker connection successful but slow (>` + self::RESPONSE_TIME_WARNING_THRESHOLD + `ms)`
                 : 'MQTT broker connection successful';
 
             return [
