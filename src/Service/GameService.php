@@ -444,7 +444,7 @@ class GameService
 
         // 2) Sygnał restartu do RasPi i silnika (z FEN)
         $fen = $this->state->getState()['fen'];
-        $this->mqtt->publish('control/restart', [
+        $this->mqtt->publish('control/restart/external', [
             'fen' => $fen
         ]);
 
