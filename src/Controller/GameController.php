@@ -1,6 +1,8 @@
 <?php
+
 namespace App\Controller;
 
+use App\Service\GameService;
 use App\Service\StateStorage;
 use Symfony\Bundle\FrameworkBundle\Controller\AbstractController;
 use Symfony\Component\HttpFoundation\Response;
@@ -16,14 +18,19 @@ use Symfony\Component\Routing\Annotation\Route;
  * Endpointy:
  * - GET /state: aktualny stan planszy (pozycje figur)
  * - GET /log: historia wszystkich wykonanych ruchów
+ * - POST /reset: resetowanie gry do stanu początkowego
  *
  */
 class GameController extends AbstractController
 {
     /**
      * @param StateStorage $state Magazyn stanu gry do odczytu danych
+     * @param GameService $gameService Serwis gry do operacji resetowania
      */
-    public function __construct(private StateStorage $state) {}
+    public function __construct(
+        private StateStorage $state,
+        private GameService $gameService
+    ) {}
 
     /**
      * Pobiera aktualny stan planszy szachowej.
@@ -45,7 +52,7 @@ class GameController extends AbstractController
      * 
      * @return Response Odpowiedź JSON z aktualnym stanem gry
      */
-    #[Route('/state', methods:['GET'])]
+    #[Route('/state', methods: ['GET'])]
     public function state(): Response
     {
         return $this->json($this->state->getState());
@@ -69,10 +76,50 @@ class GameController extends AbstractController
      * 
      * @return Response Odpowiedź JSON z historią ruchów
      */
-    #[Route('/log', methods:['GET'])]
+    #[Route('/log', methods: ['GET'])]
     public function log(): Response
     {
         $moves = $this->state->getState()['moves'];
         return $this->json(['moves' => $moves]);
+    }
+
+    /**
+     * Resetuje grę do stanu początkowego.
+     * 
+     * Wykonuje pełny reset gry szachowej, przywracając wszystkie komponenty
+     * do stanu początkowego. Koordynuje reset między magazynem stanu,
+     * zewnętrznymi komponentami (Raspberry Pi, silnik szachowy) i interfejsem użytkownika.
+     * 
+     * Format odpowiedzi:
+     * ```json
+     * {
+     *   "success": true,
+     *   "message": "Game reset successfully",
+     *   "state": {
+     *     "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
+     *     "moves": []
+     *   }
+     * }
+     * ```
+     * 
+     * @return Response Odpowiedź JSON z potwierdzeniem resetu i nowym stanem
+     */
+    #[Route('/reset', methods: ['POST'])]
+    public function reset(): Response
+    {
+        try {
+            $this->gameService->resetGame();
+
+            return $this->json([
+                'success' => true,
+                'message' => 'Game reset successfully',
+                'state' => $this->state->getState()
+            ]);
+        } catch (\Exception $e) {
+            return $this->json([
+                'success' => false,
+                'message' => 'Failed to reset game: ' . $e->getMessage()
+            ], Response::HTTP_INTERNAL_SERVER_ERROR);
+        }
     }
 }
