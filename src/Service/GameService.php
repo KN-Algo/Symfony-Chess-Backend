@@ -39,9 +39,10 @@ class GameService
      * @param string $from Pole źródłowe w notacji szachowej (np. "e2")
      * @param string $to Pole docelowe w notacji szachowej (np. "e4")
      * @param bool $physical Czy ruch został wykonany fizycznie na planszy (true) czy pochodzi z UI (false)
-     * @param string|null $specialMove Typ specjalnego ruchu ("castling_kingside", "castling_queenside", "promotion", itp.)
+     * @param string|null $specialMove Typ specjalnego ruchu ("castling_kingside", "castling_queenside", "promotion", "promotion_capture", itp.)
      * @param string|null $promotionPiece Figura do promocji ("queen", "rook", "bishop", "knight")
      * @param array|null $availablePieces Dostępne figury do promocji
+     * @param string|null $capturedPiece Zbita figura (dla promocji z biciem)
      * @return void
      * @throws \Exception W przypadku błędu komunikacji MQTT
      */
@@ -51,10 +52,22 @@ class GameService
         bool $physical,
         ?string $specialMove = null,
         ?string $promotionPiece = null,
-        ?array $availablePieces = null
+        ?array $availablePieces = null,
+        ?string $capturedPiece = null
     ): void {
         // 1) Dodaj ruch jako oczekujący na potwierdzenie
-        $this->state->addPendingMove($from, $to, $specialMove, $promotionPiece);
+        $pendingMoveData = [
+            'special_move' => $specialMove,
+            'promotion_piece' => $promotionPiece
+        ];
+        if ($availablePieces) {
+            $pendingMoveData['available_pieces'] = $availablePieces;
+        }
+        if ($capturedPiece) {
+            $pendingMoveData['captured_piece'] = $capturedPiece;
+        }
+
+        $this->state->addPendingMove($from, $to, $pendingMoveData);
 
         // 2) Przygotuj dane dla silnika
         $engineData = [
@@ -74,6 +87,9 @@ class GameService
         }
         if ($availablePieces) {
             $engineData['available_pieces'] = $availablePieces;
+        }
+        if ($capturedPiece) {
+            $engineData['captured_piece'] = $capturedPiece;
         }
 
         // 3) Wyślij do silnika w celu walidacji i otrzymania nowego FEN
@@ -116,6 +132,7 @@ class GameService
      * @param bool $givesCheck Czy ruch daje szach
      * @param string|null $gameStatus Status gry ("checkmate", "stalemate", itp.)
      * @param string|null $winner Zwycięzca gry
+     * @param string|null $capturedPiece Zbita figura (dla promocji z biciem)
      * @return void
      * @throws \Exception W przypadku błędu komunikacji MQTT
      */
@@ -130,7 +147,8 @@ class GameService
         ?string $notation = null,
         bool $givesCheck = false,
         ?string $gameStatus = null,
-        ?string $winner = null
+        ?string $winner = null,
+        ?string $capturedPiece = null
     ): void {
         // 1) Potwierdź ruch AI w stanie gry
         $this->state->confirmMove($from, $to, $newFen, $nextPlayer, [
@@ -188,6 +206,25 @@ class GameService
                 'step1' => "Usuń " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " pionka z " . $from,
                 'step2' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
                 'step3' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja zakończona"
+            ];
+        } elseif ($specialMove === 'promotion_capture') {
+            $raspiData['type'] = 'promotion_capture';
+            $raspiData['piece_removed'] = 'pawn';
+            $raspiData['piece_placed'] = $promotionPiece ?? 'queen';
+            $raspiData['piece_captured'] = $capturedPiece ?? 'unknown';
+            $raspiData['capture'] = true;
+            $raspiData['color'] = $nextPlayer === 'white' ? 'black' : 'white'; // Kolor który wykonał ruch
+            if ($notation) {
+                $raspiData['notation'] = $notation;
+            }
+            if ($givesCheck) {
+                $raspiData['gives_check'] = true;
+            }
+            $raspiData['instructions'] = [
+                'step1' => "Usuń " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " pionka z " . $from,
+                'step2' => "Usuń zbitą figurę (" . ($capturedPiece ?? 'nieznana') . ") z " . $to,
+                'step3' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
+                'step4' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja z biciem zakończona"
             ];
         }
 
@@ -261,6 +298,7 @@ class GameService
      * @param bool $givesCheck Czy ruch daje szach
      * @param string|null $gameStatus Status gry ("checkmate", "stalemate", itp.)
      * @param string|null $winner Zwycięzca gry
+     * @param string|null $capturedPiece Zbita figura (dla promocji z biciem)
      * @return void
      * @throws \Exception W przypadku błędu komunikacji MQTT
      */
@@ -276,7 +314,8 @@ class GameService
         ?string $notation = null,
         bool $givesCheck = false,
         ?string $gameStatus = null,
-        ?string $winner = null
+        ?string $winner = null,
+        ?string $capturedPiece = null
     ): void {
         // 1) Potwierdź ruch w stanie gry
         $this->state->confirmMove($from, $to, $newFen, $nextPlayer, [
@@ -287,7 +326,8 @@ class GameService
             'notation' => $notation,
             'gives_check' => $givesCheck,
             'game_status' => $gameStatus,
-            'winner' => $winner
+            'winner' => $winner,
+            'captured_piece' => $capturedPiece
         ]);
 
         // 2) Przygotuj dane dla Raspberry Pi (tylko jeśli ruch nie był fizyczny)
@@ -327,6 +367,19 @@ class GameService
                     'step1' => "Usuń " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " pionka z " . $from,
                     'step2' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
                     'step3' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja zakończona"
+                ];
+            } elseif ($specialMove === 'promotion_capture') {
+                $raspiData['type'] = 'promotion_capture';
+                $raspiData['piece_removed'] = 'pawn';
+                $raspiData['piece_placed'] = $promotionPiece ?? 'queen';
+                $raspiData['piece_captured'] = $capturedPiece ?? 'unknown';
+                $raspiData['capture'] = true;
+                $raspiData['color'] = $nextPlayer === 'white' ? 'black' : 'white';
+                $raspiData['instructions'] = [
+                    'step1' => "Usuń " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " pionka z " . $from,
+                    'step2' => "Usuń zbitą figurę (" . ($capturedPiece ?? 'nieznana') . ") z " . $to,
+                    'step3' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
+                    'step4' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja z biciem zakończona"
                 ];
             }
 

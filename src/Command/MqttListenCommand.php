@@ -96,13 +96,35 @@ class MqttListenCommand extends Command
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['from'], $decoded['to'])) {
                     try {
+                        // Obsługa dodatkowych parametrów dla specjalnych ruchów fizycznych
+                        $specialMove = $decoded['special_move'] ?? null;
+                        $promotionPiece = $decoded['promotion_piece'] ?? null;
+                        $availablePieces = $decoded['available_pieces'] ?? null;
+                        $capturedPiece = $decoded['captured_piece'] ?? null;
+
                         // Ruch fizyczny - backend powiadamia UI i silnik
-                        $this->game->playerMove($decoded['from'], $decoded['to'], true);
-                        $io->text("    ✅ <fg=green>Physical move processed:</> {$decoded['from']} → {$decoded['to']}");
+                        $this->game->playerMove(
+                            $decoded['from'],
+                            $decoded['to'],
+                            true,
+                            $specialMove,
+                            $promotionPiece,
+                            $availablePieces,
+                            $capturedPiece
+                        );
+
+                        $moveDesc = "{$decoded['from']} → {$decoded['to']}";
+                        if ($specialMove) {
+                            $moveDesc .= " ($specialMove)";
+                        }
+                        $io->text("    ✅ <fg=green>Physical move processed:</> $moveDesc");
 
                         $this->logger?->info('Game: Physical move processed successfully', [
                             'from' => $decoded['from'],
-                            'to' => $decoded['to']
+                            'to' => $decoded['to'],
+                            'special_move' => $specialMove,
+                            'promotion_piece' => $promotionPiece,
+                            'captured_piece' => $capturedPiece
                         ]);
                     } catch (\Exception $e) {
                         $io->error("    ❌ Failed to process physical move: " . $e->getMessage());
@@ -132,13 +154,35 @@ class MqttListenCommand extends Command
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['from'], $decoded['to'])) {
                     try {
+                        // Obsługa dodatkowych parametrów dla specjalnych ruchów z aplikacji webowej
+                        $specialMove = $decoded['special_move'] ?? null;
+                        $promotionPiece = $decoded['promotion_piece'] ?? null;
+                        $availablePieces = $decoded['available_pieces'] ?? null;
+                        $capturedPiece = $decoded['captured_piece'] ?? null;
+
                         // Ruch z aplikacji web - backend powiadamia Raspberry Pi i silnik
-                        $this->game->playerMove($decoded['from'], $decoded['to'], false);
-                        $io->text("    ✅ <fg=green>Web move processed:</> {$decoded['from']} → {$decoded['to']}");
+                        $this->game->playerMove(
+                            $decoded['from'],
+                            $decoded['to'],
+                            false,
+                            $specialMove,
+                            $promotionPiece,
+                            $availablePieces,
+                            $capturedPiece
+                        );
+
+                        $moveDesc = "{$decoded['from']} → {$decoded['to']}";
+                        if ($specialMove) {
+                            $moveDesc .= " ($specialMove)";
+                        }
+                        $io->text("    ✅ <fg=green>Web move processed:</> $moveDesc");
 
                         $this->logger?->info('Game: Web move processed successfully', [
                             'from' => $decoded['from'],
-                            'to' => $decoded['to']
+                            'to' => $decoded['to'],
+                            'special_move' => $specialMove,
+                            'promotion_piece' => $promotionPiece,
+                            'captured_piece' => $capturedPiece
                         ]);
                     } catch (\Exception $e) {
                         $io->error("    ❌ Failed to process web move: " . $e->getMessage());
@@ -176,6 +220,7 @@ class MqttListenCommand extends Command
                         $givesCheck = $decoded['gives_check'] ?? false;
                         $gameStatus = $decoded['game_status'] ?? null;
                         $winner = $decoded['winner'] ?? null;
+                        $capturedPiece = $decoded['captured_piece'] ?? null;
 
                         $this->game->aiMove(
                             $decoded['from'],
@@ -188,7 +233,8 @@ class MqttListenCommand extends Command
                             $notation,
                             $givesCheck,
                             $gameStatus,
-                            $winner
+                            $winner,
+                            $capturedPiece
                         );
 
                         $moveDesc = "{$decoded['from']} → {$decoded['to']}";
@@ -250,6 +296,7 @@ class MqttListenCommand extends Command
                         $givesCheck = $decoded['gives_check'] ?? false;
                         $gameStatus = $decoded['game_status'] ?? null;
                         $winner = $decoded['winner'] ?? null;
+                        $capturedPiece = $decoded['captured_piece'] ?? null;
 
                         $this->game->confirmMoveFromEngine(
                             $decoded['from'],
@@ -263,7 +310,8 @@ class MqttListenCommand extends Command
                             $notation,
                             $givesCheck,
                             $gameStatus,
-                            $winner
+                            $winner,
+                            $capturedPiece
                         );
 
                         $moveDesc = "{$decoded['from']} → {$decoded['to']}";

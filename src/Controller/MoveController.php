@@ -75,10 +75,21 @@ class MoveController extends AbstractController
         $specialMove = $data['special_move'] ?? null;
         $promotionPiece = $data['promotion_piece'] ?? null;
         $availablePieces = $data['available_pieces'] ?? null;
+        $capturedPiece = $data['captured_piece'] ?? null;
 
         // Walidacja promocji pionka
         if ($specialMove === 'promotion' && !$promotionPiece) {
             return $this->json(['error' => 'Promotion piece required for promotion move'], 400);
+        }
+
+        // Walidacja promocji z biciem
+        if ($specialMove === 'promotion_capture') {
+            if (!$promotionPiece) {
+                return $this->json(['error' => 'Promotion piece required for promotion capture move'], 400);
+            }
+            if (!$capturedPiece) {
+                return $this->json(['error' => 'Captured piece required for promotion capture move'], 400);
+            }
         }
 
         // Walidacja dostępnych figur do promocji
@@ -103,6 +114,9 @@ class MoveController extends AbstractController
             }
             if ($availablePieces) {
                 $moveData['available_pieces'] = $availablePieces;
+            }
+            if ($capturedPiece) {
+                $moveData['captured_piece'] = $capturedPiece;
             }
 
             $this->mqtt->publish('move/web', $moveData);

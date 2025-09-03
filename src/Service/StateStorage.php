@@ -150,6 +150,9 @@ class StateStorage
             if (isset($pendingMove['available_pieces'])) {
                 $moveData['available_pieces'] = $pendingMove['available_pieces'];
             }
+            if (isset($pendingMove['captured_piece'])) {
+                $moveData['captured_piece'] = $pendingMove['captured_piece'];
+            }
         }
 
         // Dodaj do historii ruchów
