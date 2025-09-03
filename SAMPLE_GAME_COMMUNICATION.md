@@ -667,6 +667,117 @@ Event: message
 
 ---
 
+## 🎯 PRZYKŁAD ZWYKŁEGO BICIA: Qh5xf6
+
+### 5.1 Wykonanie ruchu z biciem
+
+**🌐 Web App → Backend (HTTP POST)**
+
+```http
+URL: http://localhost:8000/move
+Method: POST
+```
+
+```json
+{
+    "from": "h5",
+    "to": "f6",
+    "captured_piece": "knight"
+}
+```
+
+**📤 Backend → Chess Engine (MQTT)**
+
+```mqtt
+Topic: move/engine
+```
+
+```json
+{
+    "from": "h5",
+    "to": "f6",
+    "current_fen": "r1bqkb1r/pppp1ppp/2n2n2/4p2Q/2B1P3/8/PPPP1PPP/RNB1K1NR w KQkq - 4 4",
+    "type": "move_validation",
+    "physical": false
+}
+```
+
+**📥 Chess Engine → Backend (MQTT)**
+
+```mqtt
+Topic: engine/move/confirmed
+```
+
+```json
+{
+    "from": "h5",
+    "to": "f6",
+    "fen": "r1bqkb1r/pppp1ppp/2n2Q2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 5",
+    "next_player": "black",
+    "physical": false
+}
+```
+
+**📤 Backend → Raspberry Pi (MQTT)** - Instrukcje bicia
+
+```mqtt
+Topic: move/raspi
+```
+
+```json
+{
+    "from": "h5",
+    "to": "f6",
+    "fen": "r1bqkb1r/pppp1ppp/2n2Q2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 5",
+    "captured_piece": "knight",
+    "capture_type": "regular",
+    "instructions": {
+        "step1": "Usuń zbitą figurę",
+        "step2": "Przenieś figurę",
+        "step3": "Bicie zakończone"
+    }
+}
+```
+
+**⚡ Backend → Web App (Mercure SSE)**
+
+```http
+Event: message
+```
+
+```json
+{
+    "type": "move_confirmed",
+    "move": { 
+        "from": "h5", 
+        "to": "f6",
+        "captured_piece": "knight",
+        "capture_type": "regular"
+    },
+    "physical": false,
+    "state": {
+        "fen": "r1bqkb1r/pppp1ppp/2n2Q2/4p3/2B1P3/8/PPPP1PPP/RNB1K1NR b KQkq - 0 5",
+        "moves": [
+            { "from": "e2", "to": "e4" },
+            { "from": "e7", "to": "e5" },
+            { "from": "f1", "to": "c4" },
+            { "from": "b8", "to": "c6" },
+            { "from": "d1", "to": "h5" },
+            { "from": "g8", "to": "f6" },
+            { 
+                "from": "h5", 
+                "to": "f6", 
+                "captured_piece": "knight",
+                "capture_type": "regular"
+            }
+        ],
+        "turn": "black"
+    }
+}
+```
+
+---
+
 ## 📊 Podsumowanie komunikacji
 
 ### Statystyki partii:

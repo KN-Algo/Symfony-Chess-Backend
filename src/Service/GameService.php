@@ -226,6 +226,24 @@ class GameService
                 'step3' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
                 'step4' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja z biciem zakończona"
             ];
+        } elseif ($capturedPiece && !$specialMove) {
+            // Zwykłe bicie (nie promocja)
+            $raspiData['type'] = 'capture';
+            $raspiData['piece_captured'] = $capturedPiece;
+            $raspiData['capture'] = true;
+            $raspiData['color_moved'] = $nextPlayer === 'white' ? 'black' : 'white'; // Kolor który wykonał ruch
+            $raspiData['color_captured'] = $nextPlayer === 'white' ? 'white' : 'black'; // Kolor zbitej figury
+            if ($notation) {
+                $raspiData['notation'] = $notation;
+            }
+            if ($givesCheck) {
+                $raspiData['gives_check'] = true;
+            }
+            $raspiData['instructions'] = [
+                'step1' => "Usuń zbitą figurę (" . $capturedPiece . ") z " . $to,
+                'step2' => "Przenieś figurę z " . $from . " na " . $to,
+                'step3' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Bicie zakończone"
+            ];
         }
 
         if ($givesCheck) {
@@ -380,6 +398,18 @@ class GameService
                     'step2' => "Usuń zbitą figurę (" . ($capturedPiece ?? 'nieznana') . ") z " . $to,
                     'step3' => "Umieść " . ($nextPlayer === 'white' ? 'czarnego' : 'białego') . " " . ($promotionPiece ?? 'hetmana') . " na " . $to,
                     'step4' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Promocja z biciem zakończona"
+                ];
+            } elseif ($capturedPiece && !$specialMove) {
+                // Zwykłe bicie (nie promocja)
+                $raspiData['type'] = 'capture';
+                $raspiData['piece_captured'] = $capturedPiece;
+                $raspiData['capture'] = true;
+                $raspiData['color_moved'] = $nextPlayer === 'white' ? 'black' : 'white'; // Kolor który wykonał ruch
+                $raspiData['color_captured'] = $nextPlayer === 'white' ? 'white' : 'black'; // Kolor zbitej figury
+                $raspiData['instructions'] = [
+                    'step1' => "Usuń zbitą figurę (" . $capturedPiece . ") z " . $to,
+                    'step2' => "Przenieś figurę z " . $from . " na " . $to,
+                    'step3' => $givesCheck ? "Figura daje szach przeciwnemu królowi" : "Bicie zakończone"
                 ];
             }
 
