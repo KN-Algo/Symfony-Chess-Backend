@@ -458,27 +458,30 @@ class MqttListenCommand extends Command
                 }
             });
 
-            // Subskrybuj wiadomości kontroli restartu
-            $this->mqtt->subscribe('control/restart', function ($topic, $msg) use ($io) {
+            // POPRAWKA: Subskrybuj aktualizacje stanu (zamiast control/restart)
+            // GameService publikuje state/update po resecie
+            $this->mqtt->subscribe('state/update', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
-                $io->text("[$timestamp] 🔄 <fg=red>Restart control received:</> $msg");
+                $io->text("[$timestamp] � <fg=blue>State update received:</> $msg");
 
-                $this->logger?->info('MQTT: Restart control received', [
+                $this->logger?->info('MQTT: State update received', [
                     'topic' => $topic,
                     'message' => $msg,
                     'timestamp' => $timestamp
                 ]);
 
+                // Jeśli to wygląda jak reset (FEN startowy), loguj to
                 try {
-                    $this->game->resetGame();
-                    $io->text("    ✅ <fg=green>Game reset completed</>");
-
-                    $this->logger?->info('Game: Reset completed successfully');
+                    $data = json_decode($msg, true);
+                    if ($data && isset($data['fen'])) {
+                        $startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+                        if ($data['fen'] === $startFen && empty($data['moves'])) {
+                            $io->text("    🔄 <fg=green>Detected game reset in state update</>");
+                            $this->logger?->info('Game: Reset detected in state update');
+                        }
+                    }
                 } catch (\Exception $e) {
-                    $io->error("    ❌ Failed to reset game: " . $e->getMessage());
-                    $this->logger?->error('Game: Reset failed', [
-                        'error' => $e->getMessage()
-                    ]);
+                    $this->logger?->warning('Failed to parse state update', ['error' => $e->getMessage()]);
                 }
             });
 
@@ -571,6 +574,33 @@ class MqttListenCommand extends Command
                 }
             });
 
+            // Subskrybuj aktualizacje logu ruchów
+            $this->mqtt->subscribe('log/update', function ($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] 📝 <fg=yellow>Log update received:</> $msg");
+
+                $this->logger?->info('MQTT: Log update received', [
+                    'topic' => $topic,
+                    'message' => $msg,
+                    'timestamp' => $timestamp
+                ]);
+
+                try {
+                    $data = json_decode($msg, true);
+                    if ($data && isset($data['moves'])) {
+                        $moveCount = count($data['moves']);
+                        $io->text("    📊 <fg=yellow>Moves in log: {$moveCount}</>");
+                        
+                        if ($moveCount === 0) {
+                            $io->text("    🔄 <fg=green>Log cleared - game reset detected</>");
+                            $this->logger?->info('Game: Reset detected in log update (empty moves)');
+                        }
+                    }
+                } catch (\Exception $e) {
+                    $this->logger?->warning('Failed to parse log update', ['error' => $e->getMessage()]);
+                }
+            });
+
             // Dodatkowa subscription na wszystkie move topiki dla debugging
             $this->mqtt->subscribe('move/+', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
@@ -584,7 +614,7 @@ class MqttListenCommand extends Command
             });
 
             $io->success('MQTT subscriptions established');
-            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, control/restart, move/possible_moves/request, engine/possible_moves/response, move/+');
+            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, state/update, move/possible_moves/request, engine/possible_moves/response, log/update, move/+');
             $io->comment('Listening for moves and status updates... Press Ctrl+C to stop');
 
             $this->logger?->info('MQTT Listener started successfully');

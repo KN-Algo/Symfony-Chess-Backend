@@ -13,18 +13,17 @@ use Symfony\Component\Routing\Attribute\Route;
  * Kontroler REST API do obsługi ruchów w grze szachowej.
  * 
  * MoveController zapewnia interfejs HTTP dla aplikacji webowej do wykonywania
- * ruchów i resetowania gry. Kontroler publikuje ruchy na MQTT, gdzie są
- * przetwarzane przez MqttListenCommand.
+ * ruchów. Kontroler publikuje ruchy na MQTT, gdzie są przetwarzane przez 
+ * MqttListenCommand.
  * 
  * Endpointy:
  * - POST /move: wykonanie ruchu gracza z aplikacji webowej
- * - POST /restart: reset gry do stanu początkowego
  *
  */
 class MoveController extends AbstractController
 {
     /**
-     * @param GameService $game Serwis gry (używany tylko dla restartu)
+     * @param GameService $game Serwis gry (nie używany w tym kontrolerze)
      * @param MqttService $mqtt Serwis MQTT do publikacji ruchów z UI
      */
     public function __construct(
@@ -122,27 +121,6 @@ class MoveController extends AbstractController
             $this->mqtt->publish('move/web', $moveData);
 
             return $this->json(['status' => 'ok']);
-        } catch (\Exception $e) {
-            return $this->json(['error' => $e->getMessage()], 500);
-        }
-    }
-
-    /**
-     * Resetuje grę do stanu początkowego.
-     * 
-     * Endpoint wywołuje reset gry, który czyści stan planszy i historię ruchów,
-     * oraz wysyła sygnały restartu do wszystkich komponentów systemu przez MQTT.
-     * 
-     * @return Response Odpowiedź JSON z potwierdzeniem restartu lub błędem
-     * 
-     * @throws \Exception W przypadku błędu resetowania gry
-     */
-    #[Route('/restart', methods: ['POST'])]
-    public function restart(): Response
-    {
-        try {
-            $this->game->resetGame();
-            return $this->json(['status' => 'reset']);
         } catch (\Exception $e) {
             return $this->json(['error' => $e->getMessage()], 500);
         }

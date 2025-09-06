@@ -525,10 +525,12 @@ class GameService
         // 1) Reset stanu
         $this->state->reset();
 
-        // 2) Sygnał restartu do RasPi i silnika (z FEN)
+        // 2) Sygnał restartu do zewnętrznych komponentów (RasPi i silnik)
+        // POPRAWKA: używamy innego kanału niż ten, którego nasłuchuje MqttListener
         $fen = $this->state->getState()['fen'];
-        $this->mqtt->publish('control/restart/external', [
-            'fen' => $fen
+        $this->mqtt->publish('control/reset/external', [
+            'fen' => $fen,
+            'command' => 'reset_board'
         ]);
 
         // 3) Publikacja pełnego, zresetowanego stanu i czystego logu

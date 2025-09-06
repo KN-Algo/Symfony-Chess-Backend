@@ -85,6 +85,7 @@ class GameController extends AbstractController
 
     /**
      * Resetuje grę do stanu początkowego.
+     * UJEDNOLICONY ENDPOINT: /restart
      * 
      * Wykonuje pełny reset gry szachowej, przywracając wszystkie komponenty
      * do stanu początkowego. Koordynuje reset między magazynem stanu,
@@ -94,6 +95,7 @@ class GameController extends AbstractController
      * ```json
      * {
      *   "success": true,
+     *   "status": "reset",
      *   "message": "Game reset successfully",
      *   "state": {
      *     "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1",
@@ -104,21 +106,23 @@ class GameController extends AbstractController
      * 
      * @return Response Odpowiedź JSON z potwierdzeniem resetu i nowym stanem
      */
-    #[Route('/reset', methods: ['POST'])]
-    public function reset(): Response
+    #[Route('/restart', methods: ['POST'])]
+    public function restart(): Response
     {
         try {
             $this->gameService->resetGame();
 
             return $this->json([
                 'success' => true,
+                'status' => 'reset',
                 'message' => 'Game reset successfully',
                 'state' => $this->state->getState()
             ]);
         } catch (\Exception $e) {
             return $this->json([
                 'success' => false,
-                'message' => 'Failed to reset game: ' . $e->getMessage()
+                'error' => 'Failed to reset game: ' . $e->getMessage(),
+                'status' => 'error'
             ], Response::HTTP_INTERNAL_SERVER_ERROR);
         }
     }
