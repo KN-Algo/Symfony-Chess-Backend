@@ -5,6 +5,7 @@ namespace App\Command;
 use App\Service\MqttService;
 use App\Service\GameService;
 use App\Service\NotifierService;
+use App\Service\StateStorage;
 use Symfony\Component\Console\Attribute\AsCommand;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputInterface;
@@ -41,17 +42,22 @@ class MqttListenCommand extends Command
      * @param MqttService $mqtt Serwis MQTT do komunikacji z brokerem
      * @param GameService $game Serwis gry do przetwarzania ruchów
      * @param NotifierService $notifier Serwis powiadomień do komunikacji z UI
+     * @param StateStorage $state Serwis przechowywania stanu gry
      * @param LoggerInterface|null $logger Logger do zapisywania logów (opcjonalny)
      */
     public function __construct(
         private MqttService $mqtt,
         private GameService $game,
         private NotifierService $notifier,
-        private ?LoggerInterface $logger = null
+        private StateStorage $state,
+        private ?LoggerInterface $logger = null,
+
+        /** @var array Przechowuje informacje o już przetworzonych potwierdzeniach ruchów */
+        private array $lastProcessedMoveHash = []
+
     ) {
         parent::__construct();
     }
-
     /**
      * Konfiguruje komendę - ustawia opis i parametry.
      * 
@@ -103,6 +109,19 @@ class MqttListenCommand extends Command
                         $capturedPiece = $decoded['captured_piece'] ?? null;
 
                         // Ruch fizyczny - backend powiadamia UI i silnik
+                        // Pobierz aktualny FEN przed wykonaniem ruchu fizycznego
+                        $currentState = $this->state->getState();
+
+                        // Wyślij ruch do walidacji przez silnik wraz z aktualnym FEN
+                        $this->mqtt->publish('move/engine', [
+                            'from' => $decoded['from'],
+                            'to' => $decoded['to'],
+                            'current_fen' => $currentState['fen'],
+                            'type' => 'move_validation',
+                            'physical' => true
+                        ]);
+
+                        // Wykonaj ruch w GameService
                         $this->game->playerMove(
                             $decoded['from'],
                             $decoded['to'],
@@ -161,6 +180,19 @@ class MqttListenCommand extends Command
                         $capturedPiece = $decoded['captured_piece'] ?? null;
 
                         // Ruch z aplikacji web - backend powiadamia Raspberry Pi i silnik
+                        // Pobierz aktualny FEN przed wykonaniem ruchu
+                        $currentState = $this->state->getState();
+
+                        // Wyślij ruch do walidacji przez silnik wraz z aktualnym FEN
+                        $this->mqtt->publish('move/engine', [
+                            'from' => $decoded['from'],
+                            'to' => $decoded['to'],
+                            'current_fen' => $currentState['fen'],
+                            'type' => 'move_validation',
+                            'physical' => false
+                        ]);
+
+                        // Wykonaj ruch w GameService
                         $this->game->playerMove(
                             $decoded['from'],
                             $decoded['to'],
@@ -286,6 +318,27 @@ class MqttListenCommand extends Command
 
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['fen'], $decoded['next_player'])) {
+
+                    // Wygeneruj hash dla tego ruchu
+                    $moveHash = md5($decoded['from'] . $decoded['to'] . $decoded['fen']);
+
+                    // Sprawdź czy to nie duplikat w krótkim odstępie czasu
+                    if (isset($this->lastProcessedMoveHash[$moveHash])) {
+                        $lastTime = $this->lastProcessedMoveHash[$moveHash];
+                        if (time() - $lastTime < 5) { // ignoruj duplikaty w ciągu 5 sekund
+                            $io->text("    ⚠️ <fg=yellow>Ignoring duplicate move confirmation</>");
+                            return;
+                        }
+                    }
+
+                    // Zapisz czas przetworzenia tego ruchu
+                    $this->lastProcessedMoveHash[$moveHash] = time();
+
+                    // Wyczyść stare hashe (starsze niż 10 sekund)
+                    $this->lastProcessedMoveHash = array_filter(
+                        $this->lastProcessedMoveHash,
+                        fn($time) => time() - $time < 10
+                    );
                     try {
                         // Obsługa dodatkowych parametrów dla specjalnych ruchów
                         $physical = $decoded['physical'] ?? false;
@@ -297,6 +350,16 @@ class MqttListenCommand extends Command
                         $gameStatus = $decoded['game_status'] ?? null;
                         $winner = $decoded['winner'] ?? null;
                         $capturedPiece = $decoded['captured_piece'] ?? null;
+
+                        // Sprawdź czy następny ruch należy do czarnych (AI)
+                        if ($decoded['next_player'] === 'black') {
+                            // Wyślij żądanie ruchu do silnika AI
+                            $this->mqtt->publish('move/engine/request', [
+                                'fen' => $decoded['fen'],
+                                'type' => 'request_ai_move'
+                            ]);
+                            $io->text("    🤖 <fg=yellow>Requesting AI move for position:</> {$decoded['fen']}");
+                        }
 
                         $this->game->confirmMoveFromEngine(
                             $decoded['from'],
@@ -499,15 +562,18 @@ class MqttListenCommand extends Command
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['position'])) {
                     try {
-                        // Przekaż żądanie do silnika szachowego
+                        // Przekaż żądanie do silnika szachowego wraz z aktualnym FEN
+                        $currentState = $this->state->getState();
                         $this->mqtt->publish('engine/possible_moves/request', [
-                            'position' => $decoded['position']
+                            'position' => $decoded['position'],
+                            'fen' => $currentState['fen']
                         ]);
 
-                        $io->text("    ✅ <fg=green>Request forwarded to engine:</> {$decoded['position']}");
+                        $io->text("    ✅ <fg=green>Request forwarded to engine:</> {$decoded['position']} (FEN: {$currentState['fen']})");
 
                         $this->logger?->info('MQTT: Possible moves request forwarded to engine', [
-                            'position' => $decoded['position']
+                            'position' => $decoded['position'],
+                            'fen' => $currentState['fen']
                         ]);
                     } catch (\Exception $e) {
                         $io->error("    ❌ Failed to forward request to engine: " . $e->getMessage());
@@ -590,7 +656,7 @@ class MqttListenCommand extends Command
                     if ($data && isset($data['moves'])) {
                         $moveCount = count($data['moves']);
                         $io->text("    📊 <fg=yellow>Moves in log: {$moveCount}</>");
-                        
+
                         if ($moveCount === 0) {
                             $io->text("    🔄 <fg=green>Log cleared - game reset detected</>");
                             $this->logger?->info('Game: Reset detected in log update (empty moves)');

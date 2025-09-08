@@ -155,8 +155,24 @@ class StateStorage
             }
         }
 
-        // Dodaj do historii ruchów
-        $this->moves[] = $moveData;
+        // Sprawdź czy ten ruch już istnieje w historii
+        $moveExists = false;
+        foreach ($this->moves as $existingMove) {
+            if (
+                $existingMove['from'] === $from &&
+                $existingMove['to'] === $to &&
+                $existingMove['fen'] === $newFen &&
+                $existingMove['player'] === $this->currentPlayer
+            ) {
+                $moveExists = true;
+                break;
+            }
+        }
+
+        // Dodaj do historii ruchów tylko jeśli nie istnieje
+        if (!$moveExists) {
+            $this->moves[] = $moveData;
+        }
 
         // Aktualizuj stan na podstawie odpowiedzi silnika
         $this->fen = $newFen;

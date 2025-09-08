@@ -472,6 +472,14 @@ class GameService
 
         // 5) Powiadomienie do UI o potwierdzonym ruchu
         $this->notifier->broadcast($notificationData);
+
+        // 6) Jeśli następny gracz to czarny (AI), wyślij żądanie ruchu
+        if ($nextPlayer === 'black') {
+            $this->mqtt->publish('move/engine/request', [
+                'fen' => $newFen,
+                'type' => 'request_ai_move'
+            ]);
+        }
     }
 
     /**

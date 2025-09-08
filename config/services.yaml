@@ -35,3 +35,11 @@ services:
             $mercureHealthUrl: "http://mercure:3000/healthz"
             $raspberryUrl: "%env(RASPBERRY_PI_URL)%"
             $chessEngineUrl: "%env(CHESS_ENGINE_URL)%"
+
+    App\Command\MqttListenCommand:
+        arguments:
+            $mqtt: '@App\Service\MqttService'
+            $game: '@App\Service\GameService'
+            $notifier: '@App\Service\NotifierService'
+            $state: '@App\Service\StateStorage'
+            $logger: "@?logger"
