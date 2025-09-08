@@ -31,6 +31,12 @@ Headers: Content-Type: application/json
 }
 ```
 
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/possible-moves" -H "Content-Type: application/json" -d "{\"position\":\"e2\"}"
+```
+
 **📤 Backend → MQTT Broker**
 
 ```mqtt
@@ -107,11 +113,19 @@ Headers: Content-Type: application/json
 }
 ```
 
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/move" -H "Content-Type: application/json" -d "{\"from\":\"e2\",\"to\":\"e4\"}"
+```
+
+````
+
 **📤 Backend → MQTT Broker**
 
 ```mqtt
 Topic: move/web
-```
+````
 
 ```json
 {
@@ -282,11 +296,19 @@ Headers: Content-Type: application/json
 }
 ```
 
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/possible-moves" -H "Content-Type: application/json" -d "{\"position\":\"f1\"}"
+```
+
+````
+
 **📤 Backend → Chess Engine (MQTT)**
 
 ```mqtt
 Topic: engine/possible_moves/request
-```
+````
 
 ```json
 {
@@ -330,6 +352,7 @@ Event: message
 ```http
 URL: http://localhost:8000/move
 Method: POST
+Headers: Content-Type: application/json
 ```
 
 ```json
@@ -339,11 +362,19 @@ Method: POST
 }
 ```
 
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/move" -H "Content-Type: application/json" -d "{\"from\":\"f1\",\"to\":\"c4\"}"
+```
+
+````
+
 **📤 Backend → Chess Engine (MQTT)**
 
 ```mqtt
 Topic: move/engine
-```
+````
 
 ```json
 {
@@ -444,15 +475,29 @@ Event: message
 
 **🌐 Web App → Backend (HTTP POST)**
 
+```http
+URL: http://localhost:8000/possible-moves
+Method: POST
+Headers: Content-Type: application/json
+```
+
 ```json
 { "position": "d1" }
 ```
+
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/possible-moves" -H "Content-Type: application/json" -d "{\"position\":\"d1\"}"
+```
+
+````
 
 **📥 Chess Engine → Backend (MQTT)**
 
 ```mqtt
 Topic: engine/possible_moves/response
-```
+````
 
 ```json
 {
@@ -465,15 +510,29 @@ Topic: engine/possible_moves/response
 
 **🌐 Web App → Backend (HTTP POST)**
 
+```http
+URL: http://localhost:8000/move
+Method: POST
+Headers: Content-Type: application/json
+```
+
 ```json
 { "from": "d1", "to": "h5" }
 ```
+
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/move" -H "Content-Type: application/json" -d "{\"from\":\"d1\",\"to\":\"h5\"}"
+```
+
+````
 
 **📥 Chess Engine → Backend (MQTT)**
 
 ```mqtt
 Topic: engine/move/confirmed
-```
+````
 
 ```json
 {
@@ -562,15 +621,29 @@ Event: message
 
 **🌐 Web App → Backend (HTTP POST)**
 
+```http
+URL: http://localhost:8000/possible-moves
+Method: POST
+Headers: Content-Type: application/json
+```
+
 ```json
 { "position": "h5" }
 ```
+
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/possible-moves" -H "Content-Type: application/json" -d "{\"position\":\"h5\"}"
+```
+
+````
 
 **📥 Chess Engine → Backend (MQTT)**
 
 ```mqtt
 Topic: engine/possible_moves/response
-```
+````
 
 ```json
 {
@@ -597,15 +670,29 @@ Topic: engine/possible_moves/response
 
 **🌐 Web App → Backend (HTTP POST)**
 
+```http
+URL: http://localhost:8000/move
+Method: POST
+Headers: Content-Type: application/json
+```
+
 ```json
 { "from": "h5", "to": "f7" }
 ```
+
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/move" -H "Content-Type: application/json" -d "{\"from\":\"h5\",\"to\":\"f7\"}"
+```
+
+````
 
 **📥 Chess Engine → Backend (MQTT)**
 
 ```mqtt
 Topic: engine/move/confirmed
-```
+````
 
 ```json
 {
@@ -676,6 +763,7 @@ Event: message
 ```http
 URL: http://localhost:8000/move
 Method: POST
+Headers: Content-Type: application/json
 ```
 
 ```json
@@ -686,11 +774,19 @@ Method: POST
 }
 ```
 
+**📝 CURL Example**
+
+```bash
+curl -X POST "http://localhost:8000/move" -H "Content-Type: application/json" -d "{\"from\":\"h5\",\"to\":\"f6\",\"captured_piece\":\"knight\"}"
+```
+
+````
+
 **📤 Backend → Chess Engine (MQTT)**
 
 ```mqtt
 Topic: move/engine
-```
+````
 
 ```json
 {
@@ -748,8 +844,8 @@ Event: message
 ```json
 {
     "type": "move_confirmed",
-    "move": { 
-        "from": "h5", 
+    "move": {
+        "from": "h5",
         "to": "f6",
         "captured_piece": "knight",
         "capture_type": "regular"
@@ -764,9 +860,9 @@ Event: message
             { "from": "b8", "to": "c6" },
             { "from": "d1", "to": "h5" },
             { "from": "g8", "to": "f6" },
-            { 
-                "from": "h5", 
-                "to": "f6", 
+            {
+                "from": "h5",
+                "to": "f6",
                 "captured_piece": "knight",
                 "capture_type": "regular"
             }

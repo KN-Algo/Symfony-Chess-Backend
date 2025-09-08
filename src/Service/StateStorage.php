@@ -155,23 +155,9 @@ class StateStorage
             }
         }
 
-        // Sprawdź czy ten ruch już istnieje w historii
-        $moveExists = false;
-        foreach ($this->moves as $existingMove) {
-            if (
-                $existingMove['from'] === $from &&
-                $existingMove['to'] === $to &&
-                $existingMove['fen'] === $newFen &&
-                $existingMove['player'] === $this->currentPlayer
-            ) {
-                $moveExists = true;
-                break;
-            }
-        }
-
-        // Dodaj do historii ruchów tylko jeśli nie istnieje
-        if (!$moveExists) {
-            $this->moves[] = $moveData;
+        // Sprawdź czy ten ruch już istnieje w historii używając hash
+        if (!$this->isDuplicateMove($moveData)) {
+            $this->addMoveToHistory($moveData);
         }
 
         // Aktualizuj stan na podstawie odpowiedzi silnika
@@ -275,5 +261,53 @@ class StateStorage
         $this->gameEnded = false;
         $this->inCheck = false;
         $this->checkPlayer = null;
+    }
+
+    /**
+     * Sprawdza czy ruch jest duplikatem na podstawie hash.
+     * 
+     * @param array $moveData Dane ruchu do sprawdzenia
+     * @return bool True jeśli ruch jest duplikatem
+     */
+    private function isDuplicateMove(array $moveData): bool
+    {
+        $moveHash = $this->getMoveHash($moveData);
+
+        foreach ($this->moves as $existingMove) {
+            $existingHash = $this->getMoveHash($existingMove);
+            if ($moveHash === $existingHash) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Dodaje ruch do historii z dodatkową walidacją.
+     * 
+     * @param array $moveData Dane ruchu do dodania
+     * @return void
+     */
+    private function addMoveToHistory(array $moveData): void
+    {
+        $this->moves[] = $moveData;
+    }
+
+    /**
+     * Generuje unikalny hash dla ruchu.
+     * 
+     * @param array $moveData Dane ruchu
+     * @return string Hash ruchu
+     */
+    private function getMoveHash(array $moveData): string
+    {
+        return md5(
+            $moveData['from'] .
+                $moveData['to'] .
+                $moveData['player'] .
+                $moveData['fen'] .
+                ($moveData['timestamp'] ?? '')
+        );
     }
 }

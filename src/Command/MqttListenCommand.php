@@ -351,15 +351,7 @@ class MqttListenCommand extends Command
                         $winner = $decoded['winner'] ?? null;
                         $capturedPiece = $decoded['captured_piece'] ?? null;
 
-                        // Sprawdź czy następny ruch należy do czarnych (AI)
-                        if ($decoded['next_player'] === 'black') {
-                            // Wyślij żądanie ruchu do silnika AI
-                            $this->mqtt->publish('move/engine/request', [
-                                'fen' => $decoded['fen'],
-                                'type' => 'request_ai_move'
-                            ]);
-                            $io->text("    🤖 <fg=yellow>Requesting AI move for position:</> {$decoded['fen']}");
-                        }
+                        // GameService będzie zarządzać żądaniami AI
 
                         $this->game->confirmMoveFromEngine(
                             $decoded['from'],
@@ -524,6 +516,17 @@ class MqttListenCommand extends Command
             // POPRAWKA: Subskrybuj aktualizacje stanu (zamiast control/restart)
             // GameService publikuje state/update po resecie
             $this->mqtt->subscribe('state/update', function ($topic, $msg) use ($io) {
+                static $lastStateHash = null;
+
+                // Deduplication check
+                $currentHash = md5($msg);
+                if ($lastStateHash === $currentHash) {
+                    $io->text("    ⚠️ <fg=yellow>Duplicate state update ignored</>");
+                    $this->logger?->debug('MQTT: Duplicate state update ignored', ['hash' => $currentHash]);
+                    return;
+                }
+                $lastStateHash = $currentHash;
+
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] � <fg=blue>State update received:</> $msg");
 
@@ -642,6 +645,17 @@ class MqttListenCommand extends Command
 
             // Subskrybuj aktualizacje logu ruchów
             $this->mqtt->subscribe('log/update', function ($topic, $msg) use ($io) {
+                static $lastLogHash = null;
+
+                // Deduplication check
+                $currentHash = md5($msg);
+                if ($lastLogHash === $currentHash) {
+                    $io->text("    ⚠️ <fg=yellow>Duplicate log update ignored</>");
+                    $this->logger?->debug('MQTT: Duplicate log update ignored', ['hash' => $currentHash]);
+                    return;
+                }
+                $lastLogHash = $currentHash;
+
                 $timestamp = date('H:i:s');
                 $io->text("[$timestamp] 📝 <fg=yellow>Log update received:</> $msg");
 
@@ -667,20 +681,10 @@ class MqttListenCommand extends Command
                 }
             });
 
-            // Dodatkowa subscription na wszystkie move topiki dla debugging
-            $this->mqtt->subscribe('move/+', function ($topic, $msg) use ($io) {
-                $timestamp = date('H:i:s');
-                $io->text("[$timestamp] 📨 <fg=magenta>DEBUG - Any move on {$topic}:</> $msg");
-
-                $this->logger?->debug('MQTT: Debug - any move received', [
-                    'topic' => $topic,
-                    'message' => $msg,
-                    'timestamp' => $timestamp
-                ]);
-            });
+            // Debug logging is now handled by specific subscriptions
 
             $io->success('MQTT subscriptions established');
-            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, state/update, move/possible_moves/request, engine/possible_moves/response, log/update, move/+');
+            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, state/update, move/possible_moves/request, engine/possible_moves/response, log/update');
             $io->comment('Listening for moves and status updates... Press Ctrl+C to stop');
 
             $this->logger?->info('MQTT Listener started successfully');
