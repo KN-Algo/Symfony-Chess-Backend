@@ -536,20 +536,20 @@ class GameService
         // 2) Sygnał restartu do zewnętrznych komponentów (RasPi i silnik)
         // POPRAWKA: używamy innego kanału niż ten, którego nasłuchuje MqttListener
         $fen = $this->state->getState()['fen'];
-        $this->mqtt->publish('control/reset/external', [
+        error_log("[RESET] Wysyłam sygnał resetu do silnika C++: topic=control/restart/external, fen=$fen");
+        $this->mqtt->publish('control/restart/external', [
             'fen' => $fen,
             'command' => 'reset_board'
         ]);
 
-        // 3) Publikacja pełnego, zresetowanego stanu i czystego logu
+        // 3) Powiadomienie do frontendu o resecie (PRZED state/update!)
         $state = $this->state->getState();
-        $this->mqtt->publish('state/update', $state);
-        $this->mqtt->publish('log/update', ['moves' => $state['moves']]);
-
-        // 4) Powiadomienie do frontendu o resecie
         $this->notifier->broadcast([
             'type' => 'game_reset',
             'state' => $state
         ]);
+
+        // 4) Stan będzie opublikowany przez MqttListenCommand po otrzymaniu potwierdzenia od silnika
+        error_log("[RESET] Czekam na potwierdzenie resetu od silnika przed publikacją state/update");
     }
 }

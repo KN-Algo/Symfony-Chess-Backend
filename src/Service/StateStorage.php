@@ -264,6 +264,23 @@ class StateStorage
     }
 
     /**
+     * Ustawia FEN bezpośrednio (używane przy potwierdzeniu resetu od silnika).
+     * 
+     * @param string $fen Nowy stan planszy w notacji FEN
+     * @return void
+     */
+    public function setCurrentFen(string $fen): void
+    {
+        $this->fen = $fen;
+
+        // Wywnioskuj obecnego gracza z FEN (białe/czarne z pozycji w FEN)
+        $fenParts = explode(' ', $fen);
+        if (count($fenParts) >= 2) {
+            $this->currentPlayer = ($fenParts[1] === 'w') ? 'white' : 'black';
+        }
+    }
+
+    /**
      * Sprawdza czy ruch jest duplikatem na podstawie hash.
      * 
      * @param array $moveData Dane ruchu do sprawdzenia

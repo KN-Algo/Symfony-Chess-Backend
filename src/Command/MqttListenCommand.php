@@ -109,18 +109,8 @@ class MqttListenCommand extends Command
                         $capturedPiece = $decoded['captured_piece'] ?? null;
 
                         // Ruch fizyczny - backend powiadamia UI i silnik
-                        // Pobierz aktualny FEN przed wykonaniem ruchu fizycznego
-                        $currentState = $this->state->getState();
-
-                        // Wyślij ruch do walidacji przez silnik wraz z aktualnym FEN
-                        $this->mqtt->publish('move/engine', [
-                            'from' => $decoded['from'],
-                            'to' => $decoded['to'],
-                            'current_fen' => $currentState['fen'],
-                            'type' => 'move_validation',
-                            'physical' => true
-                        ]);
-
+                        // GameService automatycznie wyśle ruch do silnika, więc nie robimy tego tutaj
+                        
                         // Wykonaj ruch w GameService
                         $this->game->playerMove(
                             $decoded['from'],
@@ -180,18 +170,8 @@ class MqttListenCommand extends Command
                         $capturedPiece = $decoded['captured_piece'] ?? null;
 
                         // Ruch z aplikacji web - backend powiadamia Raspberry Pi i silnik
-                        // Pobierz aktualny FEN przed wykonaniem ruchu
-                        $currentState = $this->state->getState();
-
-                        // Wyślij ruch do walidacji przez silnik wraz z aktualnym FEN
-                        $this->mqtt->publish('move/engine', [
-                            'from' => $decoded['from'],
-                            'to' => $decoded['to'],
-                            'current_fen' => $currentState['fen'],
-                            'type' => 'move_validation',
-                            'physical' => false
-                        ]);
-
+                        // GameService automatycznie wyśle ruch do silnika, więc nie robimy tego tutaj
+                        
                         // Wykonaj ruch w GameService
                         $this->game->playerMove(
                             $decoded['from'],
@@ -528,27 +508,39 @@ class MqttListenCommand extends Command
                 $lastStateHash = $currentHash;
 
                 $timestamp = date('H:i:s');
-                $io->text("[$timestamp] � <fg=blue>State update received:</> $msg");
+                
+                // Parsuj JSON i pokaż tylko najważniejsze informacje
+                try {
+                    $data = json_decode($msg, true);
+                    if ($data && isset($data['fen'], $data['moves'])) {
+                        $movesCount = count($data['moves']);
+                        $currentPlayer = $data['turn'] ?? 'unknown';
+                        $gameStatus = $data['game_status'] ?? 'playing';
+                        
+                        // Sprawdź czy to reset
+                        $startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+                        if ($data['fen'] === $startFen && empty($data['moves'])) {
+                            $io->text("[$timestamp] 🔄 <fg=green>State update:</> Game reset detected");
+                            $this->logger?->info('Game: Reset detected in state update');
+                        } else {
+                            $summary = "Moves: $movesCount | Turn: $currentPlayer | Status: $gameStatus";
+                            $io->text("[$timestamp] 📊 <fg=blue>State update:</> $summary");
+                        }
+                    } else {
+                        $io->text("[$timestamp] 📊 <fg=blue>State update:</> " . substr($msg, 0, 50) . "...");
+                    }
+                } catch (\Exception $e) {
+                    $io->text("[$timestamp] 📊 <fg=blue>State update:</> [parsing error]");
+                    $this->logger?->warning('Failed to parse state update', ['error' => $e->getMessage()]);
+                }
 
                 $this->logger?->info('MQTT: State update received', [
                     'topic' => $topic,
-                    'message' => $msg,
+                    'moves_count' => isset($data['moves']) ? count($data['moves']) : 0,
+                    'current_player' => $data['turn'] ?? null,
+                    'game_status' => $data['game_status'] ?? null,
                     'timestamp' => $timestamp
                 ]);
-
-                // Jeśli to wygląda jak reset (FEN startowy), loguj to
-                try {
-                    $data = json_decode($msg, true);
-                    if ($data && isset($data['fen'])) {
-                        $startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-                        if ($data['fen'] === $startFen && empty($data['moves'])) {
-                            $io->text("    🔄 <fg=green>Detected game reset in state update</>");
-                            $this->logger?->info('Game: Reset detected in state update');
-                        }
-                    }
-                } catch (\Exception $e) {
-                    $this->logger?->warning('Failed to parse state update', ['error' => $e->getMessage()]);
-                }
             });
 
             // Subskrybuj żądania możliwych ruchów z aplikacji webowej
@@ -657,34 +649,92 @@ class MqttListenCommand extends Command
                 $lastLogHash = $currentHash;
 
                 $timestamp = date('H:i:s');
-                $io->text("[$timestamp] 📝 <fg=yellow>Log update received:</> $msg");
+                
+                // Parsuj JSON i pokaż tylko liczbę ruchów
+                try {
+                    $data = json_decode($msg, true);
+                    if ($data && isset($data['moves'])) {
+                        $moveCount = count($data['moves']);
+                        $lastMove = !empty($data['moves']) ? end($data['moves']) : null;
+                        
+                        if ($lastMove && isset($lastMove['from'], $lastMove['to'])) {
+                            $lastMoveStr = $lastMove['from'] . '→' . $lastMove['to'];
+                            $io->text("[$timestamp] 📝 <fg=yellow>Log update:</> $moveCount moves (last: $lastMoveStr)");
+                        } else {
+                            $io->text("[$timestamp] 📝 <fg=yellow>Log update:</> $moveCount moves");
+                        }
+                    } else {
+                        $io->text("[$timestamp] 📝 <fg=yellow>Log update:</> [no moves data]");
+                    }
+                } catch (\Exception $e) {
+                    $io->text("[$timestamp] 📝 <fg=yellow>Log update:</> [parsing error]");
+                }
 
                 $this->logger?->info('MQTT: Log update received', [
+                    'topic' => $topic,
+                    'moves_count' => isset($data['moves']) ? count($data['moves']) : 0,
+                    'timestamp' => $timestamp
+                ]);
+            });
+
+            // Subskrybuj potwierdnienia resetu od silnika
+            $this->mqtt->subscribe('engine/reset/confirmed', function ($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] 🔄 <fg=yellow>Engine reset confirmed:</> $msg");
+
+                $this->logger?->info('MQTT: Engine reset confirmed', [
                     'topic' => $topic,
                     'message' => $msg,
                     'timestamp' => $timestamp
                 ]);
 
                 try {
-                    $data = json_decode($msg, true);
-                    if ($data && isset($data['moves'])) {
-                        $moveCount = count($data['moves']);
-                        $io->text("    📊 <fg=yellow>Moves in log: {$moveCount}</>");
-
-                        if ($moveCount === 0) {
-                            $io->text("    🔄 <fg=green>Log cleared - game reset detected</>");
-                            $this->logger?->info('Game: Reset detected in log update (empty moves)');
-                        }
+                    $decoded = json_decode($msg, true);
+                    if ($decoded && isset($decoded['fen']) && $decoded['type'] === 'reset_confirmed') {
+                        $oldFEN = $this->state->getState()['fen'] ?? 'unknown';
+                        
+                        $this->logger?->info('Updating StateStorage with engine reset FEN', [
+                            'old_fen' => $oldFEN,
+                            'new_fen' => $decoded['fen']
+                        ]);
+                        
+                        // Pełny reset StateStorage (nie tylko FEN!)
+                        $this->state->reset();
+                        $this->state->setCurrentFen($decoded['fen']);
+                        
+                        // Teraz wyślij zaktualizowany stan do frontendu
+                        $resetState = $this->state->getState();
+                        $this->mqtt->publish('state/update', $resetState);
+                        
+                        // Wyślij log update z dodatkowym polem reset, żeby uniknąć deduplication
+                        $this->mqtt->publish('log/update', [
+                            'moves' => $resetState['moves'],
+                            'reset' => true,
+                            'timestamp' => time()
+                        ]);
+                        
+                        $io->text("    ✅ <fg=green>StateStorage synchronized with engine FEN and frontend updated</>");
+                        
+                        $this->logger?->info('StateStorage synchronized and frontend updated', [
+                            'old_fen' => $oldFEN,
+                            'new_fen' => $decoded['fen'],
+                            'moves_count' => count($resetState['moves']),
+                            'reset_moves_should_be_empty' => empty($resetState['moves']) ? 'YES' : 'NO'
+                        ]);
                     }
                 } catch (\Exception $e) {
-                    $this->logger?->warning('Failed to parse log update', ['error' => $e->getMessage()]);
+                    $io->error("    ❌ Failed to process engine reset confirmation: " . $e->getMessage());
+                    $this->logger?->error('MQTT: Engine reset confirmation failed', [
+                        'error' => $e->getMessage(),
+                        'message' => $msg
+                    ]);
                 }
             });
 
             // Debug logging is now handled by specific subscriptions
 
             $io->success('MQTT subscriptions established');
-            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, state/update, move/possible_moves/request, engine/possible_moves/response, log/update');
+            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, state/update, move/possible_moves/request, engine/possible_moves/response, log/update, engine/reset/confirmed');
             $io->comment('Listening for moves and status updates... Press Ctrl+C to stop');
 
             $this->logger?->info('MQTT Listener started successfully');
