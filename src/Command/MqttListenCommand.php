@@ -110,7 +110,7 @@ class MqttListenCommand extends Command
 
                         // Ruch fizyczny - backend powiadamia UI i silnik
                         // GameService automatycznie wyśle ruch do silnika, więc nie robimy tego tutaj
-                        
+
                         // Wykonaj ruch w GameService
                         $this->game->playerMove(
                             $decoded['from'],
@@ -171,7 +171,7 @@ class MqttListenCommand extends Command
 
                         // Ruch z aplikacji web - backend powiadamia Raspberry Pi i silnik
                         // GameService automatycznie wyśle ruch do silnika, więc nie robimy tego tutaj
-                        
+
                         // Wykonaj ruch w GameService
                         $this->game->playerMove(
                             $decoded['from'],
@@ -508,7 +508,7 @@ class MqttListenCommand extends Command
                 $lastStateHash = $currentHash;
 
                 $timestamp = date('H:i:s');
-                
+
                 // Parsuj JSON i pokaż tylko najważniejsze informacje
                 try {
                     $data = json_decode($msg, true);
@@ -516,7 +516,7 @@ class MqttListenCommand extends Command
                         $movesCount = count($data['moves']);
                         $currentPlayer = $data['turn'] ?? 'unknown';
                         $gameStatus = $data['game_status'] ?? 'playing';
-                        
+
                         // Sprawdź czy to reset
                         $startFen = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
                         if ($data['fen'] === $startFen && empty($data['moves'])) {
@@ -649,14 +649,14 @@ class MqttListenCommand extends Command
                 $lastLogHash = $currentHash;
 
                 $timestamp = date('H:i:s');
-                
+
                 // Parsuj JSON i pokaż tylko liczbę ruchów
                 try {
                     $data = json_decode($msg, true);
                     if ($data && isset($data['moves'])) {
                         $moveCount = count($data['moves']);
                         $lastMove = !empty($data['moves']) ? end($data['moves']) : null;
-                        
+
                         if ($lastMove && isset($lastMove['from'], $lastMove['to'])) {
                             $lastMoveStr = $lastMove['from'] . '→' . $lastMove['to'];
                             $io->text("[$timestamp] 📝 <fg=yellow>Log update:</> $moveCount moves (last: $lastMoveStr)");
@@ -692,29 +692,29 @@ class MqttListenCommand extends Command
                     $decoded = json_decode($msg, true);
                     if ($decoded && isset($decoded['fen']) && $decoded['type'] === 'reset_confirmed') {
                         $oldFEN = $this->state->getState()['fen'] ?? 'unknown';
-                        
+
                         $this->logger?->info('Updating StateStorage with engine reset FEN', [
                             'old_fen' => $oldFEN,
                             'new_fen' => $decoded['fen']
                         ]);
-                        
+
                         // Pełny reset StateStorage (nie tylko FEN!)
                         $this->state->reset();
                         $this->state->setCurrentFen($decoded['fen']);
-                        
+
                         // Teraz wyślij zaktualizowany stan do frontendu
                         $resetState = $this->state->getState();
                         $this->mqtt->publish('state/update', $resetState);
-                        
+
                         // Wyślij log update z dodatkowym polem reset, żeby uniknąć deduplication
                         $this->mqtt->publish('log/update', [
                             'moves' => $resetState['moves'],
                             'reset' => true,
                             'timestamp' => time()
                         ]);
-                        
+
                         $io->text("    ✅ <fg=green>StateStorage synchronized with engine FEN and frontend updated</>");
-                        
+
                         $this->logger?->info('StateStorage synchronized and frontend updated', [
                             'old_fen' => $oldFEN,
                             'new_fen' => $decoded['fen'],
