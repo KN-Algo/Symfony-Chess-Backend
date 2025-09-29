@@ -4,21 +4,17 @@ FROM php:8.4-cli
 # 1) Zainstaluj biblioteki deweloperskie i narzędzia
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
-    libxml2-dev \          
-    libcurl4-openssl-dev \ 
-    libonig-dev \          
-    pkg-config \           
-    libsqlite3-dev \       
+    libonig-dev \
+    libsqlite3-dev \
     unzip \
     git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # 2) Skonfiguruj i zainstaluj rozszerzenia PHP
 RUN docker-php-ext-install \
-    mbstring \            
-    dom \                 
-    pdo_sqlite \          
-    curl                  
+    mbstring \
+    pdo_sqlite               
 
 # 3) Composer i Symfony CLI
 COPY --from=composer:2 /usr/bin/composer /usr/bin/composer
