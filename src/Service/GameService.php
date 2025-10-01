@@ -284,18 +284,17 @@ class GameService
 
         // Sprawdź koniec gry
         if ($gameStatus && in_array($gameStatus, ['checkmate', 'stalemate', 'draw'])) {
-            // Wyślij osobne powiadomienie o końcu gry
-            $this->notifier->broadcast([
-                'type' => 'game_over',
+            $notificationData['game_over'] = [
                 'result' => $gameStatus,
                 'winner' => $winner,
                 'final_position' => $newFen,
                 'moves_count' => count($state['moves'])
-            ]);
+            ];
         }
 
-        // 6) Powiadomienie do UI o ruchu AI
-        $this->notifier->broadcast($notificationData);
+        // 6) Wyślij powiadomienie przez wewnętrzny temat - będzie przekazane do UI
+        // po potwierdzeniu wykonania ruchu przez Raspberry Pi
+        $this->mqtt->publish('internal/pending_ui_notification', $notificationData);
     }
 
     /**
@@ -475,7 +474,8 @@ class GameService
 
         // 6) Jeśli następny gracz to czarny (AI), wyślij żądanie ruchu
         if ($nextPlayer === 'black') {
-            $this->mqtt->publish('move/engine/request', [
+            // Użyj wewnętrznego tematu do kontroli przepływu
+            $this->mqtt->publish('internal/request_ai_move', [
                 'fen' => $newFen,
                 'type' => 'request_ai_move'
             ]);

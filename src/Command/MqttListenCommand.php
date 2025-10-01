@@ -14,7 +14,8 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 use Psr\Log\LoggerInterface;
 
 /**
- * Komenda konsoli odpowiedzialna za nasłuchiwanie komunikatów MQTT i przekazywanie ich do GameService.
+ * Komenda konsoli odp                        // Wyślij żądanie ruchu do silnika na właściwym kanale
+                        $this->mqtt->publish('move/engine/request', $this->pendingAiMoveRequest);iedzialna za nasłuchiwanie komunikatów MQTT i przekazywanie ich do GameService.
  * 
  * Ta komenda implementuje główną pętlę komunikacyjną systemu szachowego, nasłuchując na następujących kanałach MQTT:
  * - move/player: ruchy fizyczne z Raspberry Pi
@@ -53,7 +54,19 @@ class MqttListenCommand extends Command
         private ?LoggerInterface $logger = null,
 
         /** @var array Przechowuje informacje o już przetworzonych potwierdzeniach ruchów */
-        private array $lastProcessedMoveHash = []
+        private array $lastProcessedMoveHash = [],
+
+        /** @var string Przechowuje aktualny status Raspberry Pi */
+        private string $raspiStatus = 'unknown',
+
+        /** @var array Przechowuje informacje o oczekującym ruchu AI */
+        private array $pendingAiMoveRequest = [],
+
+        /** @var bool Flaga oznaczająca czy czekamy na potwierdzenie ruchu przez Raspberry Pi */
+        private bool $waitingForRaspiConfirmation = false,
+
+        /** @var array Przechowuje oczekujące powiadomienie UI o ruchu AI */
+        private array $pendingUiNotification = []
 
     ) {
         parent::__construct();
@@ -432,6 +445,26 @@ class MqttListenCommand extends Command
                     'timestamp' => $timestamp
                 ]);
 
+                // Zapisz status dla kontroli przepływu AI
+                $decodedStatus = null;
+                if (is_string($msg)) {
+                    if (strtolower(trim($msg)) === 'ready' || strtolower(trim($msg)) === 'moving') {
+                        $this->raspiStatus = strtolower(trim($msg));
+                    } else {
+                        // Próba zdekodowania jako JSON
+                        $decodedStatus = json_decode($msg, true);
+                        if ($decodedStatus && isset($decodedStatus['status'])) {
+                            $this->raspiStatus = strtolower(trim($decodedStatus['status']));
+                        }
+                    }
+                }
+
+                // Jeśli status to "moving", ustaw flagę oczekiwania na potwierdzenie
+                if ($this->raspiStatus === 'moving') {
+                    $this->waitingForRaspiConfirmation = true;
+                    $io->text("    🔄 <fg=yellow>RasPi wykonuje ruch - czekamy na potwierdzenie</>");
+                }
+
                 // Przekaż status do UI przez WebSocket/Mercure
                 try {
                     $processedStatus = $this->processStatusForUI($msg, 'raspberry_pi');
@@ -448,6 +481,51 @@ class MqttListenCommand extends Command
 
                     $io->text("    ✅ <fg=green>Status forwarded to UI:</> {$statusDisplay}");
                     $this->logger?->debug('MQTT: Raspberry Pi status forwarded to UI', ['processed_status' => $processedStatus]);
+
+                    // Jeśli status to "ready" i mamy oczekujące żądanie ruchu AI, uruchom je
+                    // Dodatkowo sprawdź czy flaga waitingForRaspiConfirmation była ustawiona (oznacza że RasPi zakończyło ruch)
+                    if ($this->raspiStatus === 'ready' && !empty($this->pendingAiMoveRequest) && $this->waitingForRaspiConfirmation) {
+                        $io->text("    🤖 <fg=yellow>RasPi zakończyło ruch i jest gotowe, wysyłam oczekujące żądanie ruchu AI</>");
+                        $this->logger?->info('MQTT: Sending pending AI move request after RasPi ready', [
+                            'pending_request' => $this->pendingAiMoveRequest
+                        ]);
+
+                        // Wyślij żądanie ruchu do silnika
+                        $this->mqtt->publish('move/engine/request', $this->pendingAiMoveRequest);
+
+                        // Wyczyść oczekujące żądanie i flagę oczekiwania
+                        $this->pendingAiMoveRequest = [];
+                        $this->waitingForRaspiConfirmation = false;
+                    }
+
+                    // Jeśli status to "ready" i mamy oczekujące powiadomienie UI (po ruchu AI), wyślij je
+                    if ($this->raspiStatus === 'ready' && !empty($this->pendingUiNotification) && $this->waitingForRaspiConfirmation) {
+                        $io->text("    📢 <fg=green>RasPi zakończyło ruch AI, wysyłam powiadomienie do UI</>");
+                        $this->logger?->info('MQTT: Sending pending UI notification after RasPi ready', [
+                            'notification' => $this->pendingUiNotification
+                        ]);
+
+                        // Wyślij powiadomienie do UI przez Mercure
+                        $notificationToSend = $this->pendingUiNotification;
+
+                        // Jeśli jest informacja o końcu gry, wyślij osobne powiadomienie
+                        if (isset($notificationToSend['game_over'])) {
+                            $this->notifier->broadcast([
+                                'type' => 'game_over',
+                                'result' => $notificationToSend['game_over']['result'],
+                                'winner' => $notificationToSend['game_over']['winner'],
+                                'final_position' => $notificationToSend['game_over']['final_position'],
+                                'moves_count' => $notificationToSend['game_over']['moves_count']
+                            ]);
+                            unset($notificationToSend['game_over']);
+                        }
+
+                        $this->notifier->broadcast($notificationToSend);
+
+                        // Wyczyść oczekujące powiadomienie i flagę oczekiwania
+                        $this->pendingUiNotification = [];
+                        $this->waitingForRaspiConfirmation = false;
+                    }
                 } catch (\Exception $e) {
                     $io->error("    ❌ Failed to forward RasPi status to UI: " . $e->getMessage());
                     $this->logger?->error('MQTT: Failed to forward RasPi status', [
@@ -731,10 +809,70 @@ class MqttListenCommand extends Command
                 }
             });
 
+            // Subskrybuj wewnętrzny temat żądania ruchu AI (do kontroli przepływu)
+            $this->mqtt->subscribe('internal/request_ai_move', function ($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] 🤖 <fg=yellow>AI move request received:</> $msg");
+
+                $this->logger?->info('MQTT: Internal AI move request received', [
+                    'topic' => $topic,
+                    'message' => $msg,
+                    'timestamp' => $timestamp
+                ]);
+
+                $decoded = json_decode($msg, true);
+                if ($decoded && isset($decoded['type']) && $decoded['type'] === 'request_ai_move' && isset($decoded['fen'])) {
+                    // Zawsze zapisz żądanie do kolejki - będzie wysłane gdy RasPi potwierdzi gotowość po ruchu
+                    $io->text("    🚦 <fg=yellow>Zapisuję żądanie AI - czekam na potwierdzenie ruchu przez RasPi</>");
+
+                    // Zapisz żądanie do wykonania po potwierdzeniu przez RasPi
+                    $this->pendingAiMoveRequest = $decoded;
+
+                    // Ustaw flagę oczekiwania na potwierdzenie - będzie zresetowana gdy RasPi wyśle "moving"
+                    // i ustawiona ponownie na false gdy RasPi wyśle "ready"
+
+                    $this->logger?->info('MQTT: AI move request queued, waiting for RasPi to complete move', [
+                        'fen' => $decoded['fen'],
+                        'raspi_status' => $this->raspiStatus,
+                        'waiting_for_confirmation' => $this->waitingForRaspiConfirmation
+                    ]);
+                } else {
+                    $io->warning("    ⚠️  Invalid AI move request format");
+                    $this->logger?->warning('MQTT: Invalid AI move request format', ['message' => $msg]);
+                }
+            });
+
+            // Subskrybuj wewnętrzny temat oczekujących powiadomień UI (po ruchu AI)
+            $this->mqtt->subscribe('internal/pending_ui_notification', function ($topic, $msg) use ($io) {
+                $timestamp = date('H:i:s');
+                $io->text("[$timestamp] 📢 <fg=cyan>UI notification queued (waiting for RasPi):</> $msg");
+
+                $this->logger?->info('MQTT: UI notification queued, waiting for RasPi confirmation', [
+                    'topic' => $topic,
+                    'message' => $msg,
+                    'timestamp' => $timestamp
+                ]);
+
+                $decoded = json_decode($msg, true);
+                if ($decoded && isset($decoded['type'])) {
+                    // Zapisz powiadomienie do wysłania po potwierdzeniu przez RasPi
+                    $this->pendingUiNotification = $decoded;
+
+                    $io->text("    📋 <fg=yellow>Powiadomienie zapisane - czekam na potwierdzenie RasPi</>");
+
+                    $this->logger?->info('MQTT: UI notification stored, waiting for RasPi ready', [
+                        'notification_type' => $decoded['type']
+                    ]);
+                } else {
+                    $io->warning("    ⚠️  Invalid UI notification format");
+                    $this->logger?->warning('MQTT: Invalid UI notification format', ['message' => $msg]);
+                }
+            });
+
             // Debug logging is now handled by specific subscriptions
 
             $io->success('MQTT subscriptions established');
-            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, state/update, move/possible_moves/request, engine/possible_moves/response, log/update, engine/reset/confirmed');
+            $io->comment('Subscribed to: move/player, move/web, move/ai, engine/move/confirmed, engine/move/rejected, status/raspi, status/engine, state/update, move/possible_moves/request, engine/possible_moves/response, log/update, engine/reset/confirmed, internal/request_ai_move, internal/pending_ui_notification');
             $io->comment('Listening for moves and status updates... Press Ctrl+C to stop');
 
             $this->logger?->info('MQTT Listener started successfully');
