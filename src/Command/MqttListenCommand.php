@@ -66,7 +66,10 @@ class MqttListenCommand extends Command
         private bool $waitingForRaspiConfirmation = false,
 
         /** @var array Przechowuje oczekujące powiadomienie UI o ruchu AI */
-        private array $pendingUiNotification = []
+        private array $pendingUiNotification = [],
+
+        /** @var bool Flaga oznaczająca czy czekamy na cofnięcie nielegalnego ruchu fizycznego przez Raspberry Pi */
+        private bool $waitingForMoveRevert = false
 
     ) {
         parent::__construct();
@@ -104,6 +107,18 @@ class MqttListenCommand extends Command
             // Subskrybuj ruchy fizycznej planszy z Raspberry Pi
             $this->mqtt->subscribe('move/player', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
+
+                // Ignoruj ruchy podczas cofania nielegalnego ruchu
+                if ($this->waitingForMoveRevert) {
+                    $io->warning("[$timestamp] ⚠️  <fg=yellow>Physical move IGNORED - waiting for illegal move revert confirmation</>");
+                    $this->logger?->warning('MQTT: Physical move ignored - waiting for revert', [
+                        'topic' => $topic,
+                        'message' => $msg,
+                        'timestamp' => $timestamp
+                    ]);
+                    return;
+                }
+
                 $io->text("[$timestamp] � <fg=green>Physical move received:</> $msg");
 
                 $this->logger?->info('MQTT: Physical move received', [
@@ -165,6 +180,18 @@ class MqttListenCommand extends Command
             // Subskrybuj ruchy z aplikacji webowej (publikowane przez backend gdy REST API jest wywołane)
             $this->mqtt->subscribe('move/web', function ($topic, $msg) use ($io) {
                 $timestamp = date('H:i:s');
+
+                // Ignoruj ruchy podczas cofania nielegalnego ruchu
+                if ($this->waitingForMoveRevert) {
+                    $io->warning("[$timestamp] ⚠️  <fg=yellow>Web move IGNORED - waiting for illegal move revert confirmation</>");
+                    $this->logger?->warning('MQTT: Web move ignored - waiting for revert', [
+                        'topic' => $topic,
+                        'message' => $msg,
+                        'timestamp' => $timestamp
+                    ]);
+                    return;
+                }
+
                 $io->text("[$timestamp] 🌐 <fg=cyan>Web move received:</> $msg");
 
                 $this->logger?->info('MQTT: Web move received', [
@@ -408,6 +435,18 @@ class MqttListenCommand extends Command
 
                 $decoded = json_decode($msg, true);
                 if ($decoded && isset($decoded['from'], $decoded['to'], $decoded['reason'])) {
+                    // Jeśli odrzucony ruch był fizyczny, ustaw flagę oczekiwania na cofnięcie
+                    $isPhysical = $decoded['physical'] ?? false;
+                    if ($isPhysical) {
+                        $this->waitingForMoveRevert = true;
+                        $io->text("    🚫 <fg=red>PHYSICAL move rejected - waiting for RasPi to revert the move</>");
+                        $this->logger?->warning('MQTT: Physical move rejected, waiting for revert', [
+                            'from' => $decoded['from'],
+                            'to' => $decoded['to'],
+                            'reason' => $decoded['reason']
+                        ]);
+                    }
+
                     try {
                         $this->game->rejectMoveFromEngine(
                             $decoded['from'],
@@ -461,8 +500,14 @@ class MqttListenCommand extends Command
 
                 // Jeśli status to "moving", ustaw flagę oczekiwania na potwierdzenie
                 if ($this->raspiStatus === 'moving') {
-                    $this->waitingForRaspiConfirmation = true;
-                    $io->text("    🔄 <fg=yellow>RasPi wykonuje ruch - czekamy na potwierdzenie</>");
+                    // Rozróżnij czy to cofanie nielegalnego ruchu, czy normalny ruch
+                    if ($this->waitingForMoveRevert) {
+                        $io->text("    🔄 <fg=red>RasPi cofa nielegalny ruch fizyczny - czekamy na zakończenie...</>");
+                        $this->logger?->info('MQTT: RasPi reverting illegal physical move');
+                    } else {
+                        $this->waitingForRaspiConfirmation = true;
+                        $io->text("    🔄 <fg=yellow>RasPi wykonuje ruch - czekamy na potwierdzenie</>");
+                    }
                 }
 
                 // Przekaż status do UI przez WebSocket/Mercure
@@ -481,6 +526,25 @@ class MqttListenCommand extends Command
 
                     $io->text("    ✅ <fg=green>Status forwarded to UI:</> {$statusDisplay}");
                     $this->logger?->debug('MQTT: Raspberry Pi status forwarded to UI', ['processed_status' => $processedStatus]);
+
+                    // Jeśli status to "ready" i czekaliśmy na cofnięcie nielegalnego ruchu
+                    if ($this->raspiStatus === 'ready' && $this->waitingForMoveRevert) {
+                        $io->success("    ✅ <fg=green>RasPi zakończyło cofanie nielegalnego ruchu - system odblokowany!</>");
+                        $this->logger?->info('MQTT: Illegal move revert completed, system unlocked');
+
+                        // Odblokuj system
+                        $this->waitingForMoveRevert = false;
+
+                        // Powiadom UI że cofnięcie zostało zakończone i można wykonać kolejny ruch
+                        $this->notifier->broadcast([
+                            'type' => 'revert_completed',
+                            'message' => 'Illegal move has been reverted. Board is ready for next move.',
+                            'timestamp' => $timestamp,
+                            'status' => 'ready_for_move'
+                        ]);
+
+                        $io->text("    📢 <fg=green>UI notified: system ready for next move</>");
+                    }
 
                     // Jeśli status to "ready" i mamy oczekujące żądanie ruchu AI, uruchom je
                     // Dodatkowo sprawdź czy flaga waitingForRaspiConfirmation była ustawiona (oznacza że RasPi zakończyło ruch)
