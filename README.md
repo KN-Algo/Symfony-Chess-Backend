@@ -38,7 +38,7 @@ System backendu dla inteligentnej szachownicy opartej na Raspberry Pi z silnikie
 
 ```
 ┌─────────────┐    REST API     ┌─────────────┐    MQTT      ┌──────────────┐
-│   Web App   │◄──────────────►│   Backend   │◄────────────►│ Raspberry Pi │
+│   Web App   │◄──────────────► │   Backend   │◄────────────►│ Raspberry Pi │
 └─────────────┘                 └─────────────┘              └──────────────┘
        ▲                               │                              ▲
        │      Mercure (HTTP+JWT)       │ MQTT                         │
@@ -241,18 +241,37 @@ System używa bezpośredniej HTTP komunikacji z Mercure Hub z JWT autoryzacją:
 
 | Komponent           | Subskrybuje (MQTT topic)                                                                                                                                                                                                                                                                                                                                                                                                                  | Publikuje (MQTT topic)                                                                                                                                                                                                                                                                                                                               |
 | ------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Web App**         | • Mercure WebSocket z chess/updates                                                                                                                                                                                                                                                                                                                                                                                                       | • `move/web` – ruch wysłany przez UI<br>• `move/possible_moves/request` – żądanie możliwych ruchów                                                                                                                                                                                                                                                   |
-| **Silnik szachowy** | • `move/engine` – żądanie walidacji ruchu<br>• `engine/possible_moves/request` – żądanie możliwych ruchów<br>• `control/restart/external` – sygnał resetu gry                                                                                                                                                                                                                                                                             | • `move/ai` – ruch AI<br>• `status/engine` – `thinking`/`ready`/`error`/`analyzing`<br>• `engine/possible_moves/response` – odpowiedź z możliwymi ruchami<br>• `engine/move/confirmed` – potwierdzenie legalnego ruchu z FEN<br>• `engine/move/rejected` – odrzucenie nielegalnego ruchu                                                             |
+| **Web App**         | • Mercure WebSocket z chess/updates                                                                                                                                                                                                                                                                                                                                                                                                       | • Wywołuje REST API `/move` (publikuje `move/web` wewnętrznie)<br>• Wywołuje REST API `/possible-moves` (publikuje `move/possible_moves/request` wewnętrznie)<br>• Wywołuje REST API `/restart` (publikuje `control/restart/external` wewnętrznie)                                                                                                                                                                                                                                                   |
+| **Silnik szachowy** | • `move/engine` – żądanie walidacji ruchu<br>• `engine/possible_moves/request` – żądanie możliwych ruchów<br>• `control/restart/external` – sygnał resetu gry                                                                                                                                                                                                                                                                             | • `move/ai` – ruch AI<br>• `status/engine` – `thinking`/`ready`/`error`/`analyzing`<br>• `engine/possible_moves/response` – odpowiedź z możliwymi ruchami<br>• `engine/move/confirmed` – potwierdzenie legalnego ruchu z FEN<br>• `engine/move/rejected` – odrzucenie nielegalnego ruchu<br>• `engine/reset/confirmed` – potwierdzenie resetu                                                             |
 | **Raspberry Pi**    | • `move/raspi` – polecenie fizycznego ruchu<br>• `move/raspi/rejected` – polecenie cofnięcia ruchu<br>• `control/restart/external` – sygnał resetu gry                                                                                                                                                                                                                                                                                    | • `move/player` – wykryty ruch gracza na planszy<br>• `status/raspi` – `ready`/`moving`/`error`/`busy`                                                                                                                                                                                                                                               |
-| **Backend**         | • `move/player` – ruch fizyczny od RPi<br>• `move/web` – ruch z UI<br>• `move/ai` – ruch od silnika<br>• `move/possible_moves/request` – żądanie od UI<br>• `engine/possible_moves/response` – odpowiedź od silnika<br>• `engine/move/confirmed` – potwierdzenie od silnika<br>• `engine/move/rejected` – odrzucenie od silnika<br>• `status/raspi` – status RPi<br>• `status/engine` – status silnika<br>• `control/restart` – reset gry | • `move/engine` – żądanie walidacji do silnika<br>• `move/raspi` – polecenie ruchu do RPi<br>• `move/raspi/rejected` – polecenie cofnięcia do RPi<br>• `engine/possible_moves/request` – żądanie do silnika<br>• `state/update` – pełny stan gry<br>• `log/update` – aktualizacja logów<br>• `control/restart/external` – reset gry do RPi i silnika |
+| **Backend**         | • `move/player` – ruch fizyczny od RPi<br>• `move/web` – ruch z UI (wewnętrzny)<br>• `move/ai` – ruch od silnika<br>• `move/possible_moves/request` – żądanie od UI (wewnętrzne)<br>• `engine/possible_moves/response` – odpowiedź od silnika<br>• `engine/move/confirmed` – potwierdzenie od silnika<br>• `engine/move/rejected` – odrzucenie od silnika<br>• `status/raspi` – status RPi<br>• `status/engine` – status silnika<br>• `state/update` – aktualizacja stanu (własna)<br>• `log/update` – aktualizacja logów (własna)<br>• `engine/reset/confirmed` – potwierdzenie resetu od silnika<br>• `internal/request_ai_move` – wewnętrzne żądanie ruchu AI<br>• `internal/pending_ui_notification` – wewnętrzne oczekujące powiadomienie UI | • `move/engine` – żądanie walidacji do silnika<br>• `move/raspi` – polecenie ruchu do RPi<br>• `move/raspi/rejected` – polecenie cofnięcia do RPi<br>• `engine/possible_moves/request` – żądanie do silnika<br>• `state/update` – pełny stan gry<br>• `log/update` – aktualizacja logów<br>• `control/restart/external` – reset gry do RPi i silnika<br>• `internal/request_ai_move` – wewnętrzne kolejkowanie ruchu AI<br>• `internal/pending_ui_notification` – wewnętrzne kolejkowanie powiadomienia UI |
 
 ## 🔄 Przepływ walidacji ruchu:
 
 ### 1. Ruch gracza z Web App:
 
 ```
-Web App → move/web → Backend → move/engine (walidacja + physical: false) → Silnik →
+Web App (REST API /move) → Backend publikuje move/web → Backend → move/engine (walidacja + physical: false) → Silnik →
 engine/move/confirmed → Backend → move/raspi (do RPi) + Mercure (do UI)
+```
+
+```mermaid
+sequenceDiagram
+    participant UI as Web App
+    participant BE as Backend
+    participant ENG as Chess Engine
+    participant RPI as Raspberry Pi
+    participant MER as Mercure Hub
+
+    UI->>BE: POST /move {from, to}
+    BE->>BE: Publikuje move/web
+    BE->>ENG: move/engine (walidacja)
+    Note over ENG: Walidacja ruchu<br/>physical: false
+    ENG->>BE: engine/move/confirmed {fen, next_player}
+    BE->>RPI: move/raspi (wykonaj fizycznie)
+    BE->>MER: move_confirmed
+    MER->>UI: Real-time update
+    UI->>UI: Aktualizacja UI
 ```
 
 ### 2. Ruch fizyczny gracza na planszy:
@@ -262,33 +281,175 @@ RPi → move/player → Backend → move/engine (walidacja + physical: true) →
 engine/move/confirmed → Backend → Mercure (do UI) [RPi nic nie robi - pionek już jest na miejscu]
 ```
 
+```mermaid
+sequenceDiagram
+    participant RPI as Raspberry Pi
+    participant BE as Backend
+    participant ENG as Chess Engine
+    participant MER as Mercure Hub
+    participant UI as Web App
+
+    RPI->>BE: move/player {from, to, physical: true}
+    Note over RPI: Pionek już<br/>przesunięty fizycznie
+    BE->>ENG: move/engine (walidacja)
+    Note over ENG: Walidacja ruchu<br/>physical: true
+    ENG->>BE: engine/move/confirmed {fen, next_player}
+    Note over BE: RPi nic nie robi<br/>pionek już na miejscu
+    BE->>MER: move_confirmed
+    MER->>UI: Real-time update
+    UI->>UI: Aktualizacja UI
+```
+
 ### 3. Nielegalny ruch fizyczny:
 
 ```
 RPi → move/player → Backend → move/engine (walidacja + physical: true) → Silnik →
 engine/move/rejected → Backend → move/raspi/rejected (cofnij ruch) + Mercure (do UI)
+→ Backend ustawia flagę waitingForMoveRevert → RPi status: moving (cofa ruch)
+→ RPi status: ready → Backend resetuje flagę waitingForMoveRevert + Mercure (revert_completed)
 ```
 
-### 4. Odpowiedź AI:
+```mermaid
+sequenceDiagram
+    participant RPI as Raspberry Pi
+    participant BE as Backend
+    participant ENG as Chess Engine
+    participant MER as Mercure Hub
+    participant UI as Web App
+
+    RPI->>BE: move/player {from, to, physical: true}
+    Note over RPI: Nielegalny ruch<br/>fizyczny
+    BE->>ENG: move/engine (walidacja)
+    ENG->>BE: engine/move/rejected {reason}
+    BE->>BE: waitingForMoveRevert = true
+    Note over BE: System ZABLOKOWANY<br/>ignoruje nowe ruchy
+    BE->>RPI: move/raspi/rejected (cofnij!)
+    BE->>MER: move_rejected
+    MER->>UI: Powiadomienie o błędzie
+    RPI->>BE: status/raspi: moving
+    Note over RPI: Cofa ruch fizycznie
+    RPI->>BE: status/raspi: ready
+    Note over RPI: Ruch cofnięty
+    BE->>BE: waitingForMoveRevert = false
+    Note over BE: System ODBLOKOWANY
+    BE->>MER: revert_completed
+    MER->>UI: System gotowy
+```
+
+### 4. Odpowiedź AI (z kontrolą przepływu):
 
 ```
-Silnik → move/ai {from, to, fen, next_player} → Backend → move/raspi (do RPi) + Mercure (do UI)
+Silnik → move/ai {from, to, fen, next_player} → Backend → GameService publikuje internal/request_ai_move
+→ Backend kolejkuje żądanie AI → Czeka na RPi status: ready
+→ Po otrzymaniu RPi ready: Backend → move/engine/request (do silnika) + move/raspi (do RPi) + Mercure (do UI)
 ```
+
+```mermaid
+sequenceDiagram
+    participant ENG as Chess Engine
+    participant BE as Backend
+    participant RPI as Raspberry Pi
+    participant MER as Mercure Hub
+    participant UI as Web App
+
+    Note over ENG: AI myśli<br/>po ruchu gracza
+    ENG->>BE: move/ai {from, to, fen}
+    BE->>BE: Publikuje internal/request_ai_move
+    Note over BE: Kolejkuje żądanie AI<br/>pendingAiMoveRequest
+    BE->>BE: Czeka na RPi ready
+    
+    alt RPi wykonuje poprzedni ruch
+        RPI->>BE: status/raspi: moving
+        BE->>BE: waitingForRaspiConfirmation = true
+        Note over BE: Czekam na zakończenie...
+    end
+    
+    RPI->>BE: status/raspi: ready
+    Note over BE: RPi gotowe!<br/>Wysyłam żądanie AI
+    BE->>ENG: move/engine/request {fen}
+    ENG->>BE: Odpowiedź AI move
+    BE->>RPI: move/raspi (wykonaj AI)
+    BE->>BE: Publikuje internal/pending_ui_notification
+    Note over BE: Kolejkuje powiadomienie UI<br/>czeka na RPi ready
+    
+    RPI->>BE: status/raspi: moving
+    Note over RPI: Wykonuje ruch AI
+    RPI->>BE: status/raspi: ready
+    
+    BE->>MER: ai_move_executed
+    MER->>UI: Real-time update
+```
+
+**Kontrola przepływu AI:**
+- Backend kolejkuje żądanie ruchu AI w `pendingAiMoveRequest`
+- Ustawia flagę `waitingForRaspiConfirmation` gdy RPi zmienia status na `moving`
+- Wysyła żądanie do silnika dopiero gdy RPi potwierdzi `ready`
+- Zapobiega wysyłaniu wielu ruchów AI jednocześnie
 
 ### 5. Żądanie możliwych ruchów:
 
 ```
-Web App → POST /possible-moves → Backend → move/possible_moves/request →
-Backend → engine/possible_moves/request → Silnik → engine/possible_moves/response →
+Web App (REST API /possible-moves) → Backend → move/possible_moves/request →
+Backend → engine/possible_moves/request (+ current FEN) → Silnik → engine/possible_moves/response →
 Backend → Mercure (do UI z type: possible_moves)
+```
+
+```mermaid
+sequenceDiagram
+    participant UI as Web App
+    participant BE as Backend
+    participant ENG as Chess Engine
+    participant MER as Mercure Hub
+
+    UI->>BE: POST /possible-moves {position}
+    BE->>BE: Publikuje move/possible_moves/request
+    BE->>ENG: engine/possible_moves/request<br/>{position, current_fen}
+    Note over ENG: Oblicza możliwe<br/>ruchy dla pozycji
+    ENG->>BE: engine/possible_moves/response<br/>{position, moves: []}
+    BE->>MER: possible_moves broadcast
+    MER->>UI: Real-time możliwe ruchy
+    Note over UI: Podświetla pola<br/>możliwych ruchów
 ```
 
 ### 6. Reset gry:
 
 ```
-Web App (REST API) → Backend [control/restart listener] → control/restart/external → RPi + Silnik
-Backend → state/update + log/update + Mercure
+Web App (REST API /restart) → Backend → control/restart/external → RPi + Silnik
+Silnik → engine/reset/confirmed → Backend aktualizuje StateStorage → state/update + log/update + Mercure
 ```
+
+```mermaid
+sequenceDiagram
+    participant UI as Web App
+    participant BE as Backend
+    participant ENG as Chess Engine
+    participant RPI as Raspberry Pi
+    participant MER as Mercure Hub
+
+    UI->>BE: POST /restart
+    BE->>BE: GameService.restart()
+    
+    par Resetuj wszystkie komponenty
+        BE->>RPI: control/restart/external {fen}
+        Note over RPI: Reset fizycznej<br/>planszy
+        and
+        BE->>ENG: control/restart/external {fen}
+        Note over ENG: Reset silnika
+    end
+    
+    ENG->>BE: engine/reset/confirmed {type, fen}
+    BE->>BE: StateStorage.reset()
+    BE->>BE: Publikuje state/update
+    BE->>BE: Publikuje log/update {reset: true}
+    BE->>MER: game_reset broadcast
+    MER->>UI: Gra zresetowana
+    Note over UI: Plansza powraca<br/>do pozycji startowej
+```
+
+**Deduplication:**
+- `state/update` i `log/update` używają mechanizmu deduplication (hash MD5)
+- `log/update` przy resecie zawiera pole `reset: true` aby uniknąć ignorowania przez deduplication
+- `engine/move/confirmed` używa hash'a `md5(from+to+fen)` z timeoutem 5 sekund
 
 ## 📦 Przykładowe wiadomości MQTT na kanałach
 
@@ -581,7 +742,11 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 }
 ```
 
-### `control/restart` (Web App → Backend)
+### `control/restart` (Web App → Backend - TYLKO REST API)
+
+**Uwaga:** Ten topic NIE jest używany bezpośrednio przez MQTT. Web App wywołuje REST API `/restart`, które wewnętrznie publikuje `control/restart/external`.
+
+### `control/restart/external` (Backend → RPi/Silnik)
 
 ```json
 {
@@ -589,13 +754,37 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 }
 ```
 
-> **💡 Uwaga:** Backend nasłuchuje na `control/restart` ale publikuje `control/restart/external` aby uniknąć nieskończonej pętli resetowania.
-
-### `control/restart/external` (Backend → RPi/Silnik)
+### `engine/reset/confirmed` (Silnik → Backend)
 
 ```json
 {
+    "type": "reset_confirmed",
     "fen": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"
+}
+```
+
+### `internal/request_ai_move` (Backend → Backend - wewnętrzny)
+
+```json
+{
+    "type": "request_ai_move",
+    "fen": "rnbqkbnr/pppp1ppp/8/4p3/4P3/8/PPPP1PPP/RNBQKBNR w KQkq e6 0 2"
+}
+```
+
+### `internal/pending_ui_notification` (Backend → Backend - wewnętrzny)
+
+```json
+{
+    "type": "ai_move_executed",
+    "move": {
+        "from": "e7",
+        "to": "e5"
+    },
+    "state": {
+        "fen": "...",
+        "moves": [...]
+    }
 }
 ```
 
@@ -633,9 +822,19 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 
 ### `log/update` (Backend → Web App)
 
+**Standardowy update:**
 ```json
 {
     "moves": ["e2e4", "e7e5"]
+}
+```
+
+**Update po resecie (z polem reset aby uniknąć deduplication):**
+```json
+{
+    "moves": [],
+    "reset": true,
+    "timestamp": 1692454800
 }
 ```
 
@@ -648,13 +847,34 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 > 1. **WSZYSTKIE ruchy** (fizyczne i webowe) są walidowane przez silnik
 > 2. **Silnik jest źródłem prawdy** o legalności ruchów i FEN
 > 3. **Flaga `physical`** określa źródło ruchu i reakcję na walidację
+> 4. **Backend kolejkuje ruchy AI** i czeka na potwierdzenie RPi przed wysłaniem do silnika
+> 5. **Deduplication** zapobiega przetwarzaniu duplikatów w krótkim czasie
 
 ### Reakcje na walidację:
 
 | Typ ruchu    | Walidacja | Akcja po confirmed        | Akcja po rejected            |
 | ------------ | --------- | ------------------------- | ---------------------------- |
 | **Webowy**   | ✅        | Wyślij `move/raspi`       | Powiadom UI o błędzie        |
-| **Fizyczny** | ✅        | Nic (pionek już tam jest) | Wyślij `move/raspi/rejected` |
+| **Fizyczny** | ✅        | Nic (pionek już tam jest) | Wyślij `move/raspi/rejected` → Ustaw `waitingForMoveRevert` → Czekaj na RPi ready |
+
+### Mechanizmy kontroli przepływu:
+
+1. **waitingForRaspiConfirmation** - Flaga ustawiana gdy RPi zmienia status na `moving`, resetowana gdy zmieni na `ready`
+2. **waitingForMoveRevert** - Flaga ustawiana gdy nielegalny ruch fizyczny musi zostać cofnięty, resetowana gdy RPi potwierdzi `ready`
+3. **pendingAiMoveRequest** - Kolejka żądań ruchu AI, wysyłana dopiero gdy RPi jest gotowe
+4. **pendingUiNotification** - Kolejka powiadomień UI po ruchu AI, wysyłana dopiero gdy RPi zakończy ruch
+5. **lastProcessedMoveHash** - Mapa hash'y ruchów z timestampami dla deduplication (timeout 5s, czyszczenie 10s)
+
+### Blokowanie systemu podczas cofania nielegalnego ruchu:
+
+Gdy RPi musi cofnąć nielegalny ruch fizyczny:
+1. Backend ustawia `waitingForMoveRevert = true`
+2. **WSZYSTKIE** nowe ruchy (fizyczne i webowe) są IGNOROWANE
+3. RPi otrzymuje status `moving` i cofa ruch
+4. Gdy RPi potwierdzi `ready`, Backend:
+   - Resetuje `waitingForMoveRevert = false`
+   - Wysyła Mercure `revert_completed`
+   - System odblokowuje się i akceptuje nowe ruchy
 
 ## 📨 Mercure Real-time Messages:
 
@@ -741,6 +961,17 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 }
 ```
 
+### Cofnięcie nielegalnego ruchu zakończone:
+
+```json
+{
+    "type": "revert_completed",
+    "message": "Illegal move has been reverted. Board is ready for next move.",
+    "timestamp": "17:30:45",
+    "status": "ready_for_move"
+}
+```
+
 ## 🔐 Mercure Konfiguracja:
 
 ### Bezpośrednia HTTP komunikacja:
@@ -749,6 +980,7 @@ Poniżej znajdziesz przykładowe treści wiadomości przesyłanych na każdym z 
 -   JWT token generowany w locie z claims: `{"mercure": {"publish": ["*"]}}`
 -   Publiczne updates bez autoryzacji subskrypcji
 -   Topic: `http://127.0.0.1:8000/chess/updates`
+-   Timeout: 5 sekund dla żądań HTTP do Mercure Hub
 
 ### Caddy konfiguracja (dev.Caddyfile):
 
@@ -945,12 +1177,14 @@ Wszystkie kontenery są połączone w sieci `chess-network` co umożliwia im wza
 ### Podstawowe funkcje systemu:
 
 -   ✅ REST API dla ruchów i stanu gry
--   ✅ MQTT komunikacja między komponentami
--   ✅ Mercure real-time powiadomienia
+-   ✅ MQTT komunikacja między komponentami z kontrolą przepływu
+-   ✅ Mercure real-time powiadomienia przez HTTP
 -   ✅ Walidacja ruchów przez silnik szachowy
 -   ✅ Zarządzanie stanem gry i historii
 -   ✅ Health check wszystkich komponentów
 -   ✅ Synchronizacja fizycznej planszy z UI
+-   ✅ Deduplication komunikatów MQTT
+-   ✅ Kolejkowanie ruchów AI z kontrolą RPi
 
 ### Specjalne ruchy szachowe:
 
@@ -968,6 +1202,9 @@ Wszystkie kontenery są połączone w sieci `chess-network` co umożliwia im wza
 -   ✅ Specjalne payloady dla roszady i promocji
 -   ✅ Dodatkowe ruchy (np. wieża przy roszadzie)
 -   ✅ Status gry i końcowe powiadomienia
+-   ✅ Kontrola przepływu AI z kolejkowaniem
+-   ✅ Blokowanie systemu podczas cofania nielegalnego ruchu
+-   ✅ Deduplication dla state/update i log/update
 
 ### Stan gry:
 
@@ -976,6 +1213,7 @@ Wszystkie kontenery są połączone w sieci `chess-network` co umożliwia im wza
 -   ✅ Status końca gry (checkmate, stalemate, draw)
 -   ✅ Informacje o szachu i graczu w szachu
 -   ✅ Pełna synchronizacja między komponentami
+-   ✅ Mechanizmy zapobiegające duplikatom
 
 🔄 **W trakcie rozwoju:**
 
