@@ -422,6 +422,12 @@ class GameService
                 $raspiData['capture'] = true;
                 $raspiData['color_moved'] = $nextPlayer === 'white' ? 'black' : 'white'; // Kolor który wykonał ruch
                 $raspiData['color_captured'] = $nextPlayer === 'white' ? 'white' : 'black'; // Kolor zbitej figury
+                if ($notation) {
+                    $raspiData['notation'] = $notation;
+                }
+                if ($givesCheck) {
+                    $raspiData['gives_check'] = true;
+                }
                 $raspiData['instructions'] = [
                     'step1' => "Usuń zbitą figurę (" . $capturedPiece . ") z " . $to,
                     'step2' => "Przenieś figurę z " . $from . " na " . $to,
