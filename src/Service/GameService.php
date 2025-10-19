@@ -158,7 +158,8 @@ class GameService
             'notation' => $notation,
             'gives_check' => $givesCheck,
             'game_status' => $gameStatus,
-            'winner' => $winner
+            'winner' => $winner,
+            'captured_piece' => $capturedPiece
         ]);
 
         // 2) Przygotuj dane dla Raspberry Pi
@@ -167,6 +168,14 @@ class GameService
             'to' => $to,
             'fen' => $newFen
         ];
+
+        // Jeśli capturedPiece nie przyszedł z parametru, spróbuj odczytać z ostatniego ruchu w historii
+        if (!$capturedPiece) {
+            $lastMove = $this->state->getLastMove();
+            if ($lastMove && isset($lastMove['captured_piece'])) {
+                $capturedPiece = $lastMove['captured_piece'];
+            }
+        }
 
         // Obsługa specjalnych ruchów dla Raspberry Pi
         if ($specialMove === 'castling_kingside' || $specialMove === 'castling_queenside') {
@@ -354,6 +363,14 @@ class GameService
                 'to' => $to,
                 'fen' => $newFen
             ];
+
+            // Jeśli capturedPiece nie przyszedł z parametru, spróbuj odczytać z ostatniego ruchu w historii
+            if (!$capturedPiece) {
+                $lastMove = $this->state->getLastMove();
+                if ($lastMove && isset($lastMove['captured_piece'])) {
+                    $capturedPiece = $lastMove['captured_piece'];
+                }
+            }
 
             // Obsługa specjalnych ruchów dla Raspberry Pi
             if ($specialMove === 'castling_kingside' || $specialMove === 'castling_queenside') {

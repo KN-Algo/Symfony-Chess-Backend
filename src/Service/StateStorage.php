@@ -236,6 +236,19 @@ class StateStorage
     }
 
     /**
+     * Pobiera ostatni ruch z historii.
+     * 
+     * @return array|null Dane ostatniego ruchu lub null jeśli brak ruchów
+     */
+    public function getLastMove(): ?array
+    {
+        if (empty($this->moves)) {
+            return null;
+        }
+        return end($this->moves);
+    }
+
+    /**
      * Sprawdza czy istnieją ruchy oczekujące na potwierdzenie.
      * 
      * @return bool True jeśli są oczekujące ruchy
